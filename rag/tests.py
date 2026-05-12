@@ -44,10 +44,12 @@ def get_jwt(client, username="testuser", password="testpass123"):
 class DocumentModelTest(TestCase):
     def setUp(self):
         self.user = make_user()
+        from rag.models import Collection
+        self.collection = Collection.objects.create(user=self.user, name="test")
 
     def test_document_str(self):
         doc = Document.objects.create(
-            user=self.user,
+            user=self.user, collection=self.collection,
             title="Test PDF",
             file="documents/test.pdf",
             status="pending",
@@ -57,7 +59,7 @@ class DocumentModelTest(TestCase):
 
     def test_document_default_status(self):
         doc = Document.objects.create(
-            user=self.user,
+            user=self.user, collection=self.collection,
             title="My Doc",
             file="documents/test.pdf",
         )
@@ -66,9 +68,9 @@ class DocumentModelTest(TestCase):
 
     def test_chat_message_ordering(self):
         doc = Document.objects.create(
-            user=self.user, title="D", file="documents/d.pdf", status="ready"
+            user=self.user, collection=self.collection, title="D", file="documents/d.pdf", status="ready"
         )
-        conv = ChatConversation.objects.create(user=self.user, document=doc)
+        conv = ChatConversation.objects.create(collection=self.collection, user=self.user, document=doc)
         msg1 = ChatMessage.objects.create(conversation=conv, role="user", content="Hi")
         msg2 = ChatMessage.objects.create(conversation=conv, role="ai", content="Hello")
         messages = list(ChatMessage.objects.filter(conversation=conv))
@@ -157,6 +159,8 @@ class DocumentUploadTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = make_user()
+        from rag.models import Collection
+        self.collection = Collection.objects.create(user=self.user, name="test")
         token = get_jwt(self.client)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
@@ -206,7 +210,7 @@ class ChatViewTest(TestCase):
 
         # Create a ready document owned by the user
         self.doc = Document.objects.create(
-            user=self.user,
+            user=self.user, collection=self.collection,
             title="Test Doc",
             file="documents/test.pdf",
             status="ready",
@@ -219,7 +223,7 @@ class ChatViewTest(TestCase):
 
     def test_chat_rejects_non_ready_document(self):
         pending_doc = Document.objects.create(
-            user=self.user,
+            user=self.user, collection=self.collection,
             title="Pending Doc",
             file="documents/pending.pdf",
             status="pending",
@@ -234,8 +238,11 @@ class ChatViewTest(TestCase):
 
     def test_chat_rejects_wrong_user_document(self):
         other_user = make_user(username="other2", password="otherpass123")
+        from rag.models import Collection
+        other_collection = Collection.objects.create(user=other_user, name="c")
         other_doc = Document.objects.create(
             user=other_user,
+            collection=other_collection,
             title="Other Doc",
             file="documents/other.pdf",
             status="ready",
@@ -315,3 +322,47 @@ class AgentStateTest(TestCase):
         self.assertEqual(route_fn(state_web), "web_search")
         self.assertEqual(grade_fn(state_no_web), "rewrite_query")
         self.assertEqual(grade_fn(state_graded), "generate_answer")
+
+
+class MultiDocumentCitationsTest(TestCase):
+    def setUp(self):
+        from rag.models import User, Collection, Document, DocumentChunk
+        self.user = make_user()
+        self.collection = Collection.objects.create(user=self.user, name="Research")
+        
+        for i in range(1, 4):
+            doc = Document.objects.create(
+                user=self.user,
+                collection=self.collection,
+                title=f"Paper {i}",
+                status="ready"
+            )
+            DocumentChunk.objects.create(
+                document=doc,
+                page_number=1,
+                text=f"This is the content of paper {i} approach {chr(64+i)}."
+            )
+
+    def test_extract_and_validate_citations_node(self):
+        from rag.graph import extract_and_validate_citations
+        from langchain_core.messages import AIMessage
+        
+        state = {
+            "current_step": "generate",
+            "reasoning_trace": [],
+            "retrieved_documents": [
+                {"id": 101, "document_title": "Paper 1", "page_number": 1},
+                {"id": 102, "document_title": "Paper 2", "page_number": 2},
+                {"id": 103, "document_title": "Paper 3", "page_number": 1},
+            ],
+            "graded_documents": [],
+            "generation": AIMessage(content="Approach A [1] is better than Approach B [2]. Approach X was not found [9].")
+        }
+        
+        result = extract_and_validate_citations(state)
+        gen = result["generation"].content if isinstance(result["generation"], AIMessage) else result["generation"]
+        
+        self.assertIn("[1]", gen)
+        self.assertIn("[2]", gen)
+        self.assertNotIn("[9]", gen)
+        self.assertIn("[VALIDATE] Removed invalid citations: [[9]]", result["reasoning_trace"][0])

@@ -29,8 +29,10 @@ class AgentState(TypedDict, total=False):
     current_step: str
     loop_count: int
     document_id: int
+    collection_id: int
     use_web_search: bool
     rewrite_count: int
+    cited_sources: List[Dict[str, Any]]
 
 
 def route_query(state: AgentState) -> dict:
@@ -100,7 +102,8 @@ def retrieve_documents(state: AgentState) -> dict:
         # Use hybrid search for better results
         state["retrieved_documents"] = hybrid_search_tool.invoke({
             "query": state["question"], 
-            "document_id": state["document_id"], 
+            "document_id": state.get("document_id"),
+            "collection_id": state.get("collection_id"),
             "top_k": 5
         })
         
@@ -195,7 +198,7 @@ def generate_answer(state: AgentState) -> dict:
         # Compile context from retrieved documents
         docs_to_use = state.get("graded_documents") if state.get("graded_documents") else state.get("retrieved_documents", [])
         context_text = "\n\n".join([
-            f"[Source {idx+1}]\n{doc['text'][:500]}"  # Limit to first 500 chars
+            f"[Source {idx+1}] [{doc.get('document_title', 'Unknown')} (Page {doc.get('page_number', '?')})]\n{doc['text'][:500]}"
             for idx, doc in enumerate(docs_to_use[:5])
         ])
         
@@ -208,7 +211,13 @@ def generate_answer(state: AgentState) -> dict:
         
         # Construct the prompt
         user_prompt = f"""You are a helpful AI assistant that answers questions based on provided documents.
-Be accurate and reference the sources when possible. If you're unsure, say so.
+Please answer the user's question clearly and concisely.
+
+CRITICAL INSTRUCTIONS FOR CITATIONS:
+Every time you use information from the provided context, you MUST cite the source using its designated number in brackets, e.g., [1] or [2].
+- DO NOT use the document title as the citation (e.g., NOT "According to [Document A]..."). Only use the bracketed numbers.
+- If you synthesize from multiple sources, cite all of them, e.g., "The approach varies [1][3]".
+- If you're unsure or the answer is not in the context, say so.
 
 {history_text}
 
@@ -217,7 +226,7 @@ Context Documents:
 
 User Question: {state['question']}
 
-Please provide a clear, concise answer based on the context provided."""
+Please provide your answer below with bracketed citations."""
         
         response = llm.generate(user_prompt)
         state["generation"] = response['text']
@@ -234,6 +243,75 @@ Please provide a clear, concise answer based on the context provided."""
         state["reasoning_trace"].append(f"[GENERATE] Error: {str(e)}")
         
     return {"generation": state.get("generation", ""), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
+
+
+import re
+
+def extract_and_validate_citations(state: AgentState) -> dict:
+    """
+    Post-processor to validate and structure citations in the generated answer.
+
+    Actions:
+    1. Extract all [N] citations from the answer
+    2. Validate they match the source documents provided
+    3. Remove invalid citations
+    4. Build structured sources array with metadata
+    5. Store only sources that are actually cited
+    """
+    state["current_step"] = "validating_citations"
+    answer = state.get("generation", "")
+
+    docs_to_use = state.get("graded_documents", []) or state.get("retrieved_documents", [])
+    docs_to_use = docs_to_use[:5]  # Only support up to 5 sources
+
+    # Build a map of citation_number -> document metadata
+    citation_map = {}
+    for idx, doc in enumerate(docs_to_use):
+        citation_num = idx + 1
+        citation_map[str(citation_num)] = {
+            'citation_number': citation_num,
+            'chunk_id': doc.get('id'),
+            'document_id': doc.get('document_id'),
+            'document_title': doc.get('document_title', 'Unknown'),
+            'page_number': doc.get('page_number'),
+            'text_preview': doc.get('text', '')[:200],  # First 200 chars as preview
+        }
+
+    # Find all citations in the answer (patterns like [1], [2], [1][3], etc.)
+    all_citations = re.findall(r'\[(\d+)\]', answer)
+
+    # Track invalid and valid citations
+    invalid_citations = []
+    used_citation_numbers = set()
+
+    for citation_num in all_citations:
+        if citation_num not in citation_map:
+            invalid_citations.append(f"[{citation_num}]")
+            answer = answer.replace(f"[{citation_num}]", "")
+        else:
+            used_citation_numbers.add(int(citation_num))
+
+    # Build structured sources array with only cited sources
+    cited_sources = []
+    for citation_num in sorted(used_citation_numbers):
+        cited_sources.append(citation_map[str(citation_num)])
+
+    # Log validation results
+    if invalid_citations:
+        state["reasoning_trace"].append(f"[VALIDATE] Removed invalid citations: {', '.join(invalid_citations)}")
+
+    state["reasoning_trace"].append(f"[VALIDATE] Found {len(cited_sources)} valid citations: {list(used_citation_numbers)}")
+
+    # Store structured sources in state
+    state["generation"] = answer
+    state["cited_sources"] = cited_sources
+
+    return {
+        "generation": state["generation"],
+        "cited_sources": cited_sources,
+        "current_step": state["current_step"],
+        "reasoning_trace": state["reasoning_trace"]
+    }
 
 
 # Build the StateGraph
@@ -259,6 +337,7 @@ def create_rag_graph():
     workflow.add_node("grade_documents", grade_documents)
     workflow.add_node("web_search", web_search)
     workflow.add_node("generate_answer", generate_answer)
+    workflow.add_node("validate_citations", extract_and_validate_citations)
     
     # Add edges
     workflow.add_edge(START, "route_query")
@@ -290,8 +369,11 @@ def create_rag_graph():
     # From web_search
     workflow.add_edge("web_search", "generate_answer")
     
-    # From generate_answer
-    workflow.add_edge("generate_answer", END)
+    # From generate_answer to validate_citations
+    workflow.add_edge("generate_answer", "validate_citations")
+    
+    # From validate_citations
+    workflow.add_edge("validate_citations", END)
     
     # Compile the graph
     return workflow.compile()

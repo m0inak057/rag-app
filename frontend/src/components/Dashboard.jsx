@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import DocumentUpload from './DocumentUpload'
 import DocumentList from './DocumentList'
+import CollectionList from './CollectionList'
 import Chat from './Chat'
 
 export default function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('chat')
   const [refreshDocuments, setRefreshDocuments] = useState(0)
   const [selectedDocument, setSelectedDocument] = useState(null) // { id, title }
+  const [selectedCollection, setSelectedCollection] = useState(null) // { id, title }
 
   const handleDocumentUploaded = () => {
     setRefreshDocuments((prev) => prev + 1)
@@ -15,6 +17,13 @@ export default function Dashboard({ user, onLogout }) {
 
   const handleDocumentSelect = (doc) => {
     setSelectedDocument(doc)
+    setSelectedCollection(null)
+    setActiveTab('chat')
+  }
+
+  const handleCollectionSelect = (col) => {
+    setSelectedCollection(col)
+    setSelectedDocument(null)
     setActiveTab('chat')
   }
 
@@ -29,7 +38,12 @@ export default function Dashboard({ user, onLogout }) {
               Logged in as: <span className="font-medium">{user}</span>
               {selectedDocument && (
                 <span className="ml-3 text-blue-600">
-                  📄 {selectedDocument.title}
+                  📄 Doc: {selectedDocument.title}
+                </span>
+              )}
+              {selectedCollection && (
+                <span className="ml-3 text-purple-600">
+                  📁 Collection: {selectedCollection.title}
                 </span>
               )}
             </p>
@@ -76,6 +90,16 @@ export default function Dashboard({ user, onLogout }) {
           >
             📚 My Documents
           </button>
+          <button
+            onClick={() => setActiveTab('collections')}
+            className={`px-6 py-2 rounded-lg font-medium transition ${
+              activeTab === 'collections'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            📁 My Collections
+          </button>
         </div>
 
         {/* Content Area */}
@@ -84,6 +108,8 @@ export default function Dashboard({ user, onLogout }) {
             <Chat
               documentId={selectedDocument?.id ?? null}
               documentTitle={selectedDocument?.title ?? null}
+              collectionId={selectedCollection?.id ?? null}
+              collectionTitle={selectedCollection?.title ?? null}
             />
           )}
           {activeTab === 'upload' && (
@@ -93,6 +119,11 @@ export default function Dashboard({ user, onLogout }) {
             <DocumentList
               key={refreshDocuments}
               onSelectDocument={handleDocumentSelect}
+            />
+          )}
+          {activeTab === 'collections' && (
+            <CollectionList
+              onSelectCollection={handleCollectionSelect}
             />
           )}
         </div>

@@ -2,6 +2,10 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # ── Collection Endpoints ──
+    path('collections/', views.CollectionListCreateView.as_view(), name='collection-list-create'),
+    path('collections/<int:pk>/', views.CollectionDetailView.as_view(), name='collection-detail'),
+
     # ── Document Endpoints ──
     path('documents/', views.DocumentListView.as_view(), name='document-list'),
     path('documents/upload/', views.DocumentUploadView.as_view(), name='document-upload'),

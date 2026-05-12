@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../services/api'
 
 export default function DocumentUpload({ onSuccess }) {
@@ -8,6 +8,26 @@ export default function DocumentUpload({ onSuccess }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  
+  const [collections, setCollections] = useState([])
+  const [selectedCollectionId, setSelectedCollectionId] = useState('')
+
+  useEffect(() => {
+    fetchCollections()
+  }, [])
+
+  const fetchCollections = async () => {
+    try {
+      const response = await api.get('/collections/')
+      const cols = response.data.results || response.data
+      setCollections(cols)
+      if (cols.length > 0) {
+        setSelectedCollectionId(cols[0].id.toString())
+      }
+    } catch (err) {
+      console.error('Failed to load collections', err)
+    }
+  }
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -66,6 +86,10 @@ export default function DocumentUpload({ onSuccess }) {
       // 'title' is required by the backend model; derive it from the filename
       const titleFromFile = file.name.replace(/\.pdf$/i, '')
       formData.append('title', titleFromFile)
+      
+      if (selectedCollectionId) {
+        formData.append('collection_id', selectedCollectionId)
+      }
 
       const response = await api.post('/documents/upload/', formData, {
         headers: {
@@ -108,6 +132,24 @@ export default function DocumentUpload({ onSuccess }) {
       <p className="text-gray-600 mb-8">Upload PDF files to make them available for querying</p>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Target Collection</label>
+          <select 
+            value={selectedCollectionId}
+            onChange={(e) => setSelectedCollectionId(e.target.value)}
+            className="w-full border-gray-300 rounded-lg shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500"
+            disabled={collections.length === 0}
+          >
+            {collections.length === 0 ? (
+              <option value="">No collections available (will use Default)</option>
+            ) : (
+              collections.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))
+            )}
+          </select>
+        </div>
+
         {/* Drag and Drop Area */}
         <div
           onDragEnter={handleDrag}

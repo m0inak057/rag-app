@@ -5,12 +5,14 @@ from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 import json
 
-from .models import Document, ChatConversation, ChatMessage
+from .models import Document, ChatConversation, ChatMessage, Collection
 from .serializers import (
     DocumentSerializer,
     ChatQuerySerializer,
     ChatConversationSerializer,
     UserRegistrationSerializer,
+    CollectionSerializer,
+    CollectionDetailSerializer,
 )
 from .tasks import process_document_task
 from .graph import AgentState
@@ -40,13 +42,13 @@ class DocumentUploadView(generics.CreateAPIView):
     """
     POST /api/documents/upload/
 
-    Upload a PDF file. Processing happens asynchronously in background.
-    The document status will be updated as processing progresses.
+    Upload a PDF file to a specific collection. Processing happens asynchronously.
     """
     serializer_class = DocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
+        # The collection is validated in the serializer to belong to the user
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
@@ -54,9 +56,8 @@ class DocumentUploadView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        document = Document.objects.get(id=serializer.data['id'])
+        document = serializer.instance
 
-        # Trigger the async processing task
         try:
             task = process_document_task.delay(document.id)
             
@@ -70,6 +71,7 @@ class DocumentUploadView(generics.CreateAPIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            document.delete() # Clean up if task queuing fails
             return Response(
                 {"error": f"Failed to queue document processing: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -116,22 +118,36 @@ class ChatView(APIView):
         serializer.is_valid(raise_exception=True)
 
         question = serializer.validated_data['question']
-        document_id = serializer.validated_data['document_id']
+        document_id = serializer.validated_data.get('document_id')
+        collection_id = serializer.validated_data.get('collection_id')
         conversation_id = serializer.validated_data.get('conversation_id')
 
-        # 2. Check document access
-        try:
-            document = Document.objects.get(id=document_id, user=request.user)
-            if document.status != 'ready':
+        # 2. Check access
+        document = None
+        collection = None
+        
+        if document_id:
+            try:
+                document = Document.objects.get(id=document_id, user=request.user)
+                if document.status != 'ready':
+                    return Response(
+                        {"error": f"Document is not ready. Status: {document.status}"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except Document.DoesNotExist:
                 return Response(
-                    {"error": f"Document is not ready. Status: {document.status}"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    {"error": "Document not found or you don't have access."},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-        except Document.DoesNotExist:
-            return Response(
-                {"error": "Document not found or you don't have access."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+                
+        if collection_id:
+            try:
+                collection = Collection.objects.get(id=collection_id, user=request.user)
+            except Collection.DoesNotExist:
+                return Response(
+                    {"error": "Collection not found or you don't have access."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         # 3. Get or create conversation
         try:
@@ -139,12 +155,16 @@ class ChatView(APIView):
                 conversation = ChatConversation.objects.get(
                     id=conversation_id,
                     user=request.user,
-                    document=document,
                 )
+                if document_id and conversation.document_id != document_id:
+                    return Response({"error": "Conversation document mismatch."}, status=status.HTTP_400_BAD_REQUEST)
+                if collection_id and conversation.collection_id != collection_id:
+                    return Response({"error": "Conversation collection mismatch."}, status=status.HTTP_400_BAD_REQUEST)
             else:
                 conversation, _ = ChatConversation.objects.get_or_create(
                     user=request.user,
                     document=document,
+                    collection=collection,
                 )
         except ChatConversation.DoesNotExist:
             return Response(
@@ -157,13 +177,14 @@ class ChatView(APIView):
             self.stream_agent_response(
                 question,
                 document_id,
+                collection_id,
                 conversation,
                 request.user,
             ),
             content_type='text/event-stream',
         )
 
-    def stream_agent_response(self, question, document_id, conversation, user):
+    def stream_agent_response(self, question, document_id, collection_id, conversation, user):
         """
         Generator function that yields streaming events as the agent processes the query.
         Uses Server-Sent Events (SSE) format.
@@ -172,6 +193,7 @@ class ChatView(APIView):
         state: AgentState = {
             "question": question,
             "document_id": document_id,
+            "collection_id": collection_id,
             "conversation_history": [],
             "retrieved_documents": [],
             "graded_documents": [],
@@ -181,6 +203,7 @@ class ChatView(APIView):
             "loop_count": 0,
             "use_web_search": False,
             "rewrite_count": 0,
+            "cited_sources": [],
         }
         
         # Load conversation history (last 5 messages for context)
@@ -198,39 +221,33 @@ class ChatView(APIView):
             # Run the agentic graph
             rag_graph = get_rag_graph()
             result = rag_graph.invoke(state)
-            
+
             # Yield streaming updates
             for step in result["reasoning_trace"]:
                 yield f"data: {json.dumps({'type': 'reasoning', 'content': step})}\n\n"
-            
-            # Yield the final answer
-            yield f"data: {json.dumps({'type': 'answer', 'content': result['generation']})}\n\n"
-            
+
+            # Yield the final answer with cited sources
+            cited_sources = result.get("cited_sources", [])
+            yield f"data: {json.dumps({'type': 'answer', 'content': result['generation'], 'sources': cited_sources})}\n\n"
+
             # Save to database
             user_message = ChatMessage.objects.create(
                 conversation=conversation,
                 role='user',
                 content=question,
             )
-            
+
             ai_message = ChatMessage.objects.create(
                 conversation=conversation,
                 role='ai',
                 content=result["generation"],
                 reasoning_trace=result["reasoning_trace"],
-                sources=[
-                    {
-                        'id': doc.get('id'),
-                        'text': doc.get('text', '')[:200],
-                        'score': doc.get('combined_score', 0),
-                    }
-                    for doc in result["retrieved_documents"][:3]
-                ],
+                sources=cited_sources,
             )
-            
+
             # Yield success
-            yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id})}\n\n"
-        
+            yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id, 'sources': ai_message.sources})}\n\n"
+
         except Exception as e:
             # Yield error
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
@@ -376,4 +393,33 @@ class RegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class CollectionListCreateView(generics.ListCreateAPIView):
+    """
+    GET: List all collections for the authenticated user.
+    POST: Create a new collection for the authenticated user.
+    """
+    serializer_class = CollectionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Collection.objects.filter(user=self.request.user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class CollectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET: Retrieve a single collection with its documents.
+    PATCH: Update a collection's name or description.
+    DELETE: Delete a collection and all its documents.
+    """
+    serializer_class = CollectionDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_url_kwarg = 'pk'
+
+    def get_queryset(self):
+        return Collection.objects.filter(user=self.request.user)
 

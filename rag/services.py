@@ -28,16 +28,37 @@ groq_client = Groq(api_key=settings.GROQ_API_KEY)
 #  ETL PIPELINE (Phase 3)
 # ═══════════════════════════════════════════════════════════
 
-def extract_text_from_pdf(file_path: str) -> str:
+def extract_chunks_with_pages(file_path: str, chunk_size: int = 1000, overlap: int = 200) -> list[dict]:
     """
-    Opens a PDF file and extracts ALL the text from every page.
+    Extracts text from a PDF and chunks it page by page.
+    Each chunk includes the page number it came from.
+    Chunks do not span across page boundaries.
     """
-    text = ""
+    chunks_with_pages = []
     doc = fitz.open(file_path)
-    for page in doc:
-        text += page.get_text()
+    
+    for page_num, page in enumerate(doc):
+        text = page.get_text("text")
+        if not text.strip():
+            continue
+
+        page_chunks = []
+        start = 0
+        while start < len(text):
+            end = start + chunk_size
+            chunk_text = text[start:end]
+            if chunk_text.strip():
+                page_chunks.append(chunk_text.strip())
+            start += chunk_size - overlap
+        
+        for chunk in page_chunks:
+            chunks_with_pages.append({
+                "text": chunk,
+                "page_number": page_num + 1  # 1-based page number
+            })
+            
     doc.close()
-    return text
+    return chunks_with_pages
 
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:
@@ -64,24 +85,36 @@ def process_document(document) -> int:
     Returns the number of chunks created.
     """
     file_path = document.file.path
-    text = extract_text_from_pdf(file_path)
+    
+    # Use the new page-aware chunking function
+    chunks_with_pages = extract_chunks_with_pages(file_path)
 
-    if not text.strip():
+    if not chunks_with_pages:
         raise ValueError(f"No text could be extracted from '{document.title}'. "
                          "The PDF might be image-based or empty.")
 
-    chunks = chunk_text(text)
-    embeddings = embedding_model.encode(chunks, show_progress_bar=True)
+    # Separate texts and page numbers for embedding
+    texts = [item['text'] for item in chunks_with_pages]
+    embeddings = embedding_model.encode(texts, show_progress_bar=True)
 
     chunk_objects = [
         DocumentChunk(
             document=document,
-            text=chunk_text_content,
+            text=item['text'],
+            page_number=item['page_number'],
             embedding=embedding.tolist(),
         )
-        for chunk_text_content, embedding in zip(chunks, embeddings)
+        for item, embedding in zip(chunks_with_pages, embeddings)
     ]
+    
     DocumentChunk.objects.bulk_create(chunk_objects)
+    
+    # Update page count on the document
+    doc = fitz.open(file_path)
+    document.page_count = len(doc)
+    doc.close()
+    document.save()
+    
     return len(chunk_objects)
 
 
@@ -89,32 +122,41 @@ def process_document(document) -> int:
 #  RAG PIPELINE (Phase 4)
 # ═══════════════════════════════════════════════════════════
 
-def retrieve_relevant_chunks(question: str, document_id: int, top_k: int = 5) -> list[DocumentChunk]:
+def retrieve_relevant_chunks(question: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> list[DocumentChunk]:
     """
     STEP 1 & 2 of RAG: Embed the question and find the most similar chunks.
 
     How it works:
       1. The user's question is converted to a 384-dim vector
       2. We search the DocumentChunk table for chunks belonging to
-         this document, ordered by cosine similarity (closest first)
+         this document or collection, ordered by cosine similarity (closest first)
       3. Return the top K most relevant chunks
 
     Args:
-        question:    The user's question string
-        document_id: Which document to search within
-        top_k:       How many chunks to retrieve (default: 5)
+        question:      The user's question string
+        document_id:   Which document to search within (optional if collection_id provided)
+        collection_id: Which collection to search within (optional if document_id provided)
+        top_k:         How many chunks to retrieve (default: 5)
 
     Returns:
         A list of DocumentChunk objects, most relevant first.
     """
+    if not document_id and not collection_id:
+        raise ValueError("Must provide either document_id or collection_id")
+
     # Embed the question using the SAME model used during ETL
     question_embedding = embedding_model.encode(question).tolist()
 
-    # Query the DB: find chunks from this document, sorted by similarity
+    # Query the DB: find chunks from this document or collection, sorted by similarity
     # CosineDistance = 0 means identical, CosineDistance = 2 means opposite
+    queryset = DocumentChunk.objects.all()
+    if document_id:
+        queryset = queryset.filter(document_id=document_id)
+    if collection_id:
+        queryset = queryset.filter(document__collection_id=collection_id)
+
     relevant_chunks = (
-        DocumentChunk.objects
-        .filter(document_id=document_id)
+        queryset
         .order_by(CosineDistance('embedding', question_embedding))
         [:top_k]
     )
@@ -164,7 +206,7 @@ def build_prompt(question: str, chunks: list[DocumentChunk], chat_history: list[
     return messages
 
 
-def generate_answer(question: str, document_id: int, conversation_id: int = None, user=None) -> dict:
+def generate_answer(question: str, document_id: int = None, collection_id: int = None, conversation_id: int = None, user=None) -> dict:
     """
     The MAIN RAG function. Orchestrates the full pipeline:
 
@@ -177,27 +219,41 @@ def generate_answer(question: str, document_id: int, conversation_id: int = None
 
     Args:
         question:        The user's question
-        document_id:     Which document to query against
+        document_id:     Which document to query against (optional)
+        collection_id:   Which collection to query against (optional)
         conversation_id: Existing conversation ID (None = start new conversation)
         user:            The authenticated user
 
     Returns:
         A dict with the answer, conversation_id, and sources.
     """
+    if not document_id and not collection_id:
+        raise ValueError("Must provide either document_id or collection_id")
+
     # ── Step 1: Get or create conversation ──
-    document = Document.objects.get(id=document_id, user=user)
+    document = None
+    collection = None
+    if document_id:
+        document = Document.objects.get(id=document_id, user=user)
+    if collection_id:
+        from .models import Collection
+        collection = Collection.objects.get(id=collection_id, user=user)
 
     if conversation_id:
         conversation = ChatConversation.objects.get(
-            id=conversation_id, user=user, document=document
+            id=conversation_id, user=user
         )
+        if document:
+            assert conversation.document == document
+        if collection:
+            assert conversation.collection == collection
     else:
         conversation = ChatConversation.objects.create(
-            user=user, document=document
+            user=user, document=document, collection=collection
         )
 
     # ── Step 2: Retrieve relevant chunks ──
-    chunks = retrieve_relevant_chunks(question, document_id, top_k=5)
+    chunks = retrieve_relevant_chunks(question, document_id=document_id, collection_id=collection_id, top_k=5)
 
     if not chunks:
         return {
@@ -242,7 +298,13 @@ def generate_answer(question: str, document_id: int, conversation_id: int = None
         "answer": answer,
         "conversation_id": conversation.id,
         "sources": [
-            {"chunk_id": chunk.id, "text_preview": chunk.text[:200] + "..."}
+            {
+                "chunk_id": chunk.id,
+                "text_preview": chunk.text[:200] + "...",
+                "document_id": chunk.document.id,
+                "document_title": chunk.document.title,
+                "page_number": chunk.page_number,
+            }
             for chunk in chunks
         ],
     }

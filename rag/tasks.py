@@ -20,11 +20,10 @@ def process_document_task(self, document_id: int) -> dict:
     Celery task to process a PDF document asynchronously.
     
     Steps:
-    1. Extract text from PDF
-    2. Split text into chunks
-    3. Generate embeddings for each chunk
-    4. Store chunks and embeddings in the database
-    5. Update document status
+    1. Extract text and page numbers from PDF
+    2. Generate embeddings for each chunk
+    3. Store chunks, page numbers, and embeddings in the database
+    4. Update document status and page count
     
     Args:
         document_id: The ID of the Document to process
@@ -32,6 +31,10 @@ def process_document_task(self, document_id: int) -> dict:
     Returns:
         A dictionary with processing results
     """
+    from .services import extract_chunks_with_pages # Moved import here
+    from .models import Document, DocumentChunk
+    import fitz # Moved import here
+    
     try:
         # Get the document
         document = Document.objects.get(id=document_id)
@@ -41,45 +44,48 @@ def process_document_task(self, document_id: int) -> dict:
         document.save()
         
         # Update task state
-        self.update_state(state='PROCESSING', meta={'current': 'Extracting text from PDF...'})
+        self.update_state(state='PROCESSING', meta={'current': 'Extracting chunks with page numbers...'})
         
-        # Step 1: Extract text from PDF
+        # Step 1: Extract chunks with page numbers
         file_path = document.file.path
-        text = extract_text_from_pdf(file_path)
+        chunks_with_pages = extract_chunks_with_pages(file_path)
         
-        if not text.strip():
+        if not chunks_with_pages:
             raise ValueError("No text could be extracted from the PDF. It may be image-based or empty.")
         
-        # Update task state
-        self.update_state(state='PROCESSING', meta={'current': 'Chunking text...'})
-        
-        # Step 2: Chunk the text
-        chunks = chunk_text(text, chunk_size=1000, overlap=200)
-        
-        if not chunks:
-            raise ValueError("No chunks created from the text.")
+        # Separate texts for embedding
+        chunks_text = [item['text'] for item in chunks_with_pages]
         
         # Update task state
-        self.update_state(state='PROCESSING', meta={'current': f'Generating embeddings for {len(chunks)} chunks...'})
+        self.update_state(state='PROCESSING', meta={'current': f'Generating embeddings for {len(chunks_text)} chunks...'})
         
-        # Step 3: Generate embeddings
-        embeddings = embedding_model.encode(chunks, show_progress_bar=False)
+        # Step 2: Generate embeddings
+        embeddings = embedding_model.encode(chunks_text, show_progress_bar=False)
         
-        # Step 4: Bulk create DocumentChunk objects
+        # Step 3: Bulk create DocumentChunk objects
         chunk_objects = [
             DocumentChunk(
                 document=document,
-                text=chunk,
+                text=item['text'],
+                page_number=item['page_number'],
                 embedding=embedding.tolist(),
             )
-            for chunk, embedding in zip(chunks, embeddings)
+            for item, embedding in zip(chunks_with_pages, embeddings)
         ]
         
         DocumentChunk.objects.bulk_create(chunk_objects, batch_size=100)
         
-        # Step 5: Update document status
+        # Step 4: Update document status and page count
         document.status = 'ready'
         document.chunks_count = len(chunk_objects)
+        
+        # Get page count from the PDF
+        try:
+            with fitz.open(file_path) as doc:
+                document.page_count = len(doc)
+        except Exception:
+            document.page_count = 0 # Or handle as an error
+            
         document.error_message = None
         document.save()
         
@@ -87,7 +93,7 @@ def process_document_task(self, document_id: int) -> dict:
             'status': 'success',
             'document_id': document_id,
             'chunks_created': len(chunk_objects),
-            'text_length': len(text),
+            'page_count': document.page_count,
         }
     
     except Exception as e:
@@ -97,8 +103,8 @@ def process_document_task(self, document_id: int) -> dict:
             document.status = 'failed'
             document.error_message = str(e)
             document.save()
-        except Exception:
-            pass
+        except Document.DoesNotExist:
+            pass # Document may not have been saved yet
         
         # Return error info
         return {

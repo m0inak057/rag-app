@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Document, ChatConversation, ChatMessage
+from .models import Document, ChatConversation, ChatMessage, Collection
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -35,17 +35,35 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
+class CollectionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for listing and creating collections.
+    """
+    document_count = serializers.IntegerField(read_only=True)
 
+    class Meta:
+        model = Collection
+        fields = ['id', 'name', 'description', 'created_at', 'document_count']
+        read_only_fields = ['created_at', 'document_count']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class DocumentSerializer(serializers.ModelSerializer):
     """
     Used for document upload and listing.
     """
+    collection = serializers.PrimaryKeyRelatedField(
+        queryset=Collection.objects.all(),
+        required=True
+    )
+
     class Meta:
         model = Document
-        fields = ['id', 'title', 'file', 'uploaded_at', 'status', 'chunks_count']
-        read_only_fields = ['uploaded_at', 'status', 'chunks_count']
+        fields = ['id', 'title', 'file', 'uploaded_at', 'status', 'chunks_count', 'page_count', 'collection']
+        read_only_fields = ['uploaded_at', 'status', 'chunks_count', 'page_count']
 
     def validate_file(self, value):
         if not value.name.endswith('.pdf'):
@@ -54,26 +72,58 @@ class DocumentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("File size must not exceed 20 MB.")
         return value
 
+    def validate_collection(self, value):
+        """
+        Check that the collection belongs to the current user.
+        """
+        if value.user != self.context['request'].user:
+            raise serializers.ValidationError("You do not have permission to add a document to this collection.")
+        return value
+
+
+class CollectionDetailSerializer(CollectionSerializer):
+    """
+    Serializer for the detail view of a collection, including its documents.
+    """
+    documents = DocumentSerializer(many=True, read_only=True)
+
+    class Meta(CollectionSerializer.Meta):
+        fields = CollectionSerializer.Meta.fields + ['documents']
+
 
 class ChatQuerySerializer(serializers.Serializer):
     """
     Validates the incoming chat request.
     
-    Required: question, document_id
+    Required: question
+    Optional: document_id (if querying against a specific document)
+    Optional: collection_id (if querying against a whole collection)
     Optional: conversation_id (if continuing an existing chat)
     """
     question = serializers.CharField(
         max_length=2000,
-        help_text="The question to ask about the document"
+        help_text="The question to ask about the document/collection"
     )
     document_id = serializers.IntegerField(
+        required=False,
+        default=None,
         help_text="ID of the document to query against"
+    )
+    collection_id = serializers.IntegerField(
+        required=False,
+        default=None,
+        help_text="ID of the collection to query against"
     )
     conversation_id = serializers.IntegerField(
         required=False,
         default=None,
         help_text="ID of existing conversation (omit to start a new one)"
     )
+
+    def validate(self, attrs):
+        if not attrs.get('document_id') and not attrs.get('collection_id'):
+            raise serializers.ValidationError("Either document_id or collection_id must be provided.")
+        return attrs
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):

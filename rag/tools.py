@@ -21,7 +21,7 @@ def set_embedding_model(model):
     embedding_model = model
 
 
-def _vector_search_impl(query: str, document_id: int, top_k: int = 5) -> List[dict]:
+def _vector_search_impl(query: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> List[dict]:
     """
     Plain (non-@tool) implementation of vector search.
     Called internally by both vector_search_tool and hybrid_search_tool
@@ -29,22 +29,33 @@ def _vector_search_impl(query: str, document_id: int, top_k: int = 5) -> List[di
     """
     if embedding_model is None:
         raise ValueError("Embedding model not initialized. Call set_embedding_model() first.")
+        
+    if not document_id and not collection_id:
+        raise ValueError("Must provide either document_id or collection_id")
 
     # Embed the query
     query_embedding = embedding_model.encode(query, convert_to_tensor=False).tolist()
 
     # Query the database for similar chunks
-    chunks = DocumentChunk.objects.filter(
-        document_id=document_id
-    ).annotate(
+    queryset = DocumentChunk.objects.all()
+    if document_id:
+        queryset = queryset.filter(document_id=document_id)
+    if collection_id:
+        queryset = queryset.filter(document__collection_id=collection_id)
+
+    chunks = queryset.annotate(
         distance=CosineDistance('embedding', query_embedding)
     ).order_by('distance')[:top_k]
 
     results = []
     for chunk in chunks:
+        # Pre-fetch related document for title and ID
+        doc = chunk.document
         results.append({
             'id': chunk.id,
-            'document_id': chunk.document_id,
+            'document_id': doc.id,
+            'document_title': doc.title,
+            'page_number': chunk.page_number,
             'text': chunk.text,
             'relevance_score': 1 - float(chunk.distance),  # Convert distance to similarity
         })
@@ -53,46 +64,57 @@ def _vector_search_impl(query: str, document_id: int, top_k: int = 5) -> List[di
 
 
 @tool
-def vector_search_tool(query: str, document_id: int, top_k: int = 5) -> List[dict]:
+def vector_search_tool(query: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> List[dict]:
     """
     Search for relevant document chunks using semantic similarity (vector embeddings).
 
     Args:
         query: The user's question or search query
         document_id: The ID of the document to search within
+        collection_id: The ID of the collection to search within
         top_k: Number of top results to return (default: 5)
 
     Returns:
         List of relevant chunks with their metadata
     """
     try:
-        return _vector_search_impl(query, document_id, top_k)
+        return _vector_search_impl(query, document_id=document_id, collection_id=collection_id, top_k=top_k)
     except Exception as e:
         raise ValueError(f"Vector search failed: {str(e)}")
 
 
 @tool
-def hybrid_search_tool(query: str, document_id: int, top_k: int = 5) -> List[dict]:
+def hybrid_search_tool(query: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> List[dict]:
     """
     Perform hybrid search combining semantic (vector) and keyword (BM25) search.
 
     Args:
         query: The user's question or search query
         document_id: The ID of the document to search within
+        collection_id: The ID of the collection to search within
         top_k: Number of top results to return (default: 5)
 
     Returns:
         List of relevant chunks ranked by combined score
     """
     try:
-        # Step 1: Get all chunks from the document
-        all_chunks = list(DocumentChunk.objects.filter(document_id=document_id))
+        if not document_id and not collection_id:
+            raise ValueError("Must provide either document_id or collection_id")
+
+        # Step 1: Get all chunks from the document/collection
+        queryset = DocumentChunk.objects.select_related('document')
+        if document_id:
+            queryset = queryset.filter(document_id=document_id)
+        if collection_id:
+            queryset = queryset.filter(document__collection_id=collection_id)
+            
+        all_chunks = list(queryset)
 
         if not all_chunks:
             return []
 
         # Step 2: Semantic search — call plain helper directly (not the @tool wrapper)
-        vector_results = _vector_search_impl(query, document_id, top_k=len(all_chunks))
+        vector_results = _vector_search_impl(query, document_id=document_id, collection_id=collection_id, top_k=len(all_chunks))
         vector_scores = {r['id']: r['relevance_score'] for r in vector_results}
         
         # Step 3: Keyword search (BM25)
@@ -113,7 +135,9 @@ def hybrid_search_tool(query: str, document_id: int, top_k: int = 5) -> List[dic
             
             combined_results.append({
                 'id': chunk.id,
-                'document_id': chunk.document_id,
+                'document_id': chunk.document.id,
+                'document_title': chunk.document.title,
+                'page_number': chunk.page_number,
                 'text': chunk.text,
                 'vector_score': vector_score,
                 'bm25_score': bm25_score,
@@ -123,9 +147,10 @@ def hybrid_search_tool(query: str, document_id: int, top_k: int = 5) -> List[dic
         # Sort and return top_k
         combined_results.sort(key=lambda x: x['combined_score'], reverse=True)
         return combined_results[:top_k]
-    
+
     except Exception as e:
-        raise ValueError(f"Hybrid search failed: {str(e)}")
+        logger.error(f"Hybrid search failed: {str(e)}")
+        return []
 
 
 @tool

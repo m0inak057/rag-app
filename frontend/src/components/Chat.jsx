@@ -1,20 +1,14 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import api from '../services/api'
 
-/**
- * Chat component.
- *
- * Props:
- *   documentId  (number | null)  — the document to chat with
- *   documentTitle (string)       — display name
- */
-export default function Chat({ documentId, documentTitle }) {
+export default function Chat({ documentId, documentTitle, collectionId, collectionTitle }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [reasoning, setReasoning] = useState([])
   const [showReasoning, setShowReasoning] = useState(false)
+  const [activeSource, setActiveSource] = useState(null)
   const messagesEndRef = useRef(null)
   const abortRef = useRef(null)
 
@@ -26,46 +20,46 @@ export default function Chat({ documentId, documentTitle }) {
     scrollToBottom()
   }, [messages])
 
-  // Reset chat when document changes
   useEffect(() => {
     setMessages([])
     setReasoning([])
     setError('')
-  }, [documentId])
+    setActiveSource(null)
+  }, [documentId, collectionId])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!input.trim() || !documentId) return
+    if (!input.trim()) return
+    if (!documentId && !collectionId) return
 
     const userMessage = input.trim()
     setInput('')
     setError('')
     setReasoning([])
     setShowReasoning(false)
+    setActiveSource(null)
 
     setMessages((prev) => [...prev, { type: 'user', content: userMessage }])
     setLoading(true)
 
-    // Abort any previous in-flight request
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
     try {
       const token = localStorage.getItem('token')
+      
+      const requestBody = { question: userMessage }
+      if (documentId) requestBody.document_id = documentId
+      if (collectionId) requestBody.collection_id = collectionId
 
-      // Use fetch instead of EventSource so we can POST with a JSON body.
-      // The backend streams back Server-Sent Events via StreamingHttpResponse.
       const response = await fetch('/api/chat/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          question: userMessage,
-          document_id: documentId,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       })
 
@@ -74,7 +68,6 @@ export default function Chat({ documentId, documentTitle }) {
         throw new Error(errData.error || `Server error ${response.status}`)
       }
 
-      // Read the SSE stream line-by-line
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -87,26 +80,22 @@ export default function Chat({ documentId, documentTitle }) {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-
-        // SSE lines are separated by double-newline
         const parts = buffer.split('\n\n')
-        buffer = parts.pop() // keep incomplete chunk
+        buffer = parts.pop()
 
         for (const part of parts) {
-          // Each SSE event looks like: "data: <json>"
           const dataLine = part.split('\n').find((l) => l.startsWith('data: '))
           if (!dataLine) continue
 
           try {
-            const payload = JSON.parse(dataLine.slice(6)) // strip "data: "
-
+            const payload = JSON.parse(dataLine.slice(6))
             if (payload.type === 'reasoning') {
               currentReasoning = [...currentReasoning, payload.content]
               setReasoning(currentReasoning)
             } else if (payload.type === 'answer') {
               assistantContent = payload.content
             } else if (payload.type === 'complete') {
-              // Stream finished — nothing extra needed, message added below
+              sourcesFromServer = payload.sources || []
             } else if (payload.type === 'error') {
               throw new Error(payload.content)
             }
@@ -116,7 +105,6 @@ export default function Chat({ documentId, documentTitle }) {
         }
       }
 
-      // Add the final AI message once streaming is done
       if (assistantContent) {
         setMessages((prev) => [
           ...prev,
@@ -130,142 +118,151 @@ export default function Chat({ documentId, documentTitle }) {
         setError('No answer received from the agent.')
       }
     } catch (err) {
-      if (err.name === 'AbortError') return // user navigated away
+      if (err.name === 'AbortError') return
       setError(err.message || 'Failed to send message')
     } finally {
       setLoading(false)
     }
   }
 
-  // Guard: no document selected
-  if (!documentId) {
+  if (!documentId && !collectionId) {
     return (
-      <div className="flex flex-col h-full items-center justify-center text-center p-8">
-        <p className="text-gray-500 text-lg mb-2">No document selected</p>
-        <p className="text-gray-400 text-sm">
-          Go to <span className="font-medium">Documents</span> tab, select a ready document, then come back here to chat.
-        </p>
+      <div className="flex flex-col h-[500px] items-center justify-center text-center p-8 text-gray-500">
+        <p className="text-lg mb-2">No context selected</p>
+        <p className="text-sm">Select a Document or Collection to start chatting.</p>
       </div>
     )
   }
 
+  const renderMessageContent = (text, sources) => {
+    // splits based on [number] capturing group
+    const parts = text.split(/(\[\d+\])/g)
+    return parts.map((part, i) => {
+      const match = part.match(/^\[(\d+)\]$/)
+      if (match) {
+        const sourceIndex = parseInt(match[1], 10) - 1
+        const sourceObj = sources?.[sourceIndex]
+        if (sourceObj) {
+          return (
+            <button
+              key={i}
+              onClick={() => setActiveSource(sourceObj)}
+              className="inline-flex items-center justify-center mx-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-semibold rounded cursor-pointer transition-colors"
+              title={`View Source ${sourceIndex + 1}`}
+            >
+              {part}
+            </button>
+          )
+        }
+      }
+      return <Fragment key={i}>{part}</Fragment>
+    })
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900">Chat with your Document</h2>
-        <p className="text-gray-600 text-sm mt-1">
-          Chatting with: <span className="font-medium text-blue-600">{documentTitle || `Document #${documentId}`}</span>
-        </p>
-      </div>
+    <div className="flex h-[calc(100vh-180px)] bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div className={`flex flex-col flex-1 border-r border-gray-200 transition-all ${activeSource ? 'w-2/3' : 'w-full'}`}>
+        <div className="border-b border-gray-200 p-4 flex flex-col">
+          <h2 className="text-2xl font-bold text-gray-900">Chat</h2>
+          <p className="text-gray-600 text-sm mt-1">
+            Context: <span className="font-medium text-blue-600">
+              {collectionTitle ? `Collection - ${collectionTitle}` : `Document - ${documentTitle}`}
+            </span>
+          </p>
+        </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-gray-500 text-lg mb-2">No messages yet</p>
-              <p className="text-gray-400">Start by asking a question about your document</p>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          {messages.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-gray-500">
+              Ask a question to search your knowledge base...
             </div>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg, idx) => (
+          ) : (
+            messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-2xl ${
-                    msg.type === 'user'
-                      ? 'bg-blue-600 text-white rounded-lg rounded-tr-none'
-                      : 'bg-gray-100 text-gray-900 rounded-lg rounded-tl-none'
-                  } p-4`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-
-                  {/* Sources */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-300">
-                      <p className="font-semibold text-sm mb-2">Sources used:</p>
-                      <ul className="space-y-1">
-                        {msg.sources.map((source, sidx) => (
-                          <li key={sidx} className="text-sm opacity-75">
-                            • {source.text ? source.text.slice(0, 80) + '…' : `Chunk #${source.id}`}
-                            {source.score !== undefined && (
-                              <span className="ml-1 text-xs">({(source.score * 100).toFixed(0)}%)</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+                <div className={`max-w-[85%] p-4 shadow-sm ${msg.type === 'user' ? 'bg-blue-600 text-white rounded-l-lg rounded-br-lg' : 'bg-white text-gray-900 rounded-r-lg rounded-bl-lg border border-gray-200'}`}>
+                  <p className="whitespace-pre-wrap leading-relaxed">
+                    {msg.type === 'assistant' ? renderMessageContent(msg.content, msg.sources) : msg.content}
+                  </p>
+                  
+                  {msg.sources && msg.sources.length > 0 && msg.type === 'assistant' && (
+                    <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap gap-2">
+                       <span className="font-medium text-gray-700">Sources:</span>
+                       {msg.sources.map((src, i) => (
+                         <div key={i} className="bg-gray-100 px-2 py-1 rounded">
+                           [{i+1}] {src.document_title} (Page {src.page_number})
+                         </div>
+                       ))}
                     </div>
                   )}
                 </div>
               </div>
-            ))}
-
-            {/* Loading indicator */}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-lg rounded-tl-none p-4">
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                  </div>
-                </div>
+            ))
+          )}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-gray-200 rounded-r-lg rounded-bl-lg p-4 shadow-sm text-gray-500 italic">
+                Agent is typing...
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
-
-      {/* Reasoning Panel */}
-      {reasoning.length > 0 && (
-        <div className="border-t border-gray-200 bg-gray-50 p-4">
-          <button
-            onClick={() => setShowReasoning(!showReasoning)}
-            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium"
-          >
-            {showReasoning ? '▼' : '▶'} Agent Reasoning ({reasoning.length} steps)
-          </button>
-          {showReasoning && (
-            <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
-              {reasoning.map((step, idx) => (
-                <div key={idx} className="text-sm text-gray-700 bg-white p-2 rounded border border-gray-200 font-mono">
-                  {step}
-                </div>
-              ))}
             </div>
           )}
+          {error && <div className="text-red-600 text-center text-sm p-2">{error}</div>}
+          <div ref={messagesEndRef} />
         </div>
-      )}
+        
+        {reasoning.length > 0 && (
+          <div className="border-t border-gray-200 bg-white p-2">
+             <button onClick={() => setShowReasoning(!showReasoning)} className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center px-2">
+               {showReasoning ? '▼ Hide' : '▶ Show'} Agent Trace ({reasoning.length})
+             </button>
+             {showReasoning && (
+               <div className="text-xs font-mono mt-2 p-2 mx-2 bg-gray-50 rounded max-h-32 overflow-y-auto space-y-1 border border-gray-200">
+                 {reasoning.map((r, i) => <div key={i}>{r}</div>)}
+               </div>
+             )}
+          </div>
+        )}
 
-      {/* Error Display */}
-      {error && (
-        <div className="border-t border-red-200 bg-red-50 p-4">
-          <p className="text-red-700 text-sm">⚠ {error}</p>
-        </div>
-      )}
-
-      {/* Input Area */}
-      <div className="border-t border-gray-200 p-6 bg-white">
-        <form onSubmit={handleSubmit} className="flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={loading}
-            placeholder="Ask a question about your document..."
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
-          />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 transition"
-          >
-            Send
-          </button>
+        <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 bg-white flex gap-3">
+           <input type="text" value={input} onChange={e => setInput(e.target.value)} disabled={loading} placeholder="Ask a question..." className="flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+           <button type="submit" disabled={loading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg disabled:opacity-50 transition-colors">Send</button>
         </form>
       </div>
+
+      {activeSource && (
+        <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200 shadow-inner overflow-hidden">
+           <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm">
+             <h3 className="font-bold text-gray-800">Source Viewer</h3>
+             <button onClick={() => setActiveSource(null)} className="text-gray-500 hover:bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition-colors" title="Close Panel">
+               ✕
+             </button>
+           </div>
+           <div className="p-6 overflow-y-auto flex-1">
+             <div className="mb-6 pb-4 border-b border-gray-200">
+               <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Document</h4>
+               <p className="text-lg text-gray-900 font-medium leading-tight">{activeSource.document_title || `Document #${activeSource.document_id}`}</p>
+             </div>
+             <div className="mb-6 pb-4 border-b border-gray-200 flex justify-between">
+               <div>
+                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Page</h4>
+                 <p className="text-xl text-blue-600 font-bold">{activeSource.page_number || 'N/A'}</p>
+               </div>
+               {activeSource.score !== undefined && (
+                 <div className="text-right">
+                   <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Relevance</h4>
+                   <p className="text-xl text-green-600 font-bold">{Math.round(activeSource.score * 100)}%</p>
+                 </div>
+               )}
+             </div>
+             <div>
+               <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Extracted Snippet</h4>
+               <div className="bg-white border border-gray-200 rounded-lg p-4 font-serif text-sm leading-relaxed text-gray-800 shadow-sm relative overflow-hidden">
+                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
+                 {activeSource.text}
+               </div>
+             </div>
+           </div>
+        </div>
+      )}
     </div>
   )
 }

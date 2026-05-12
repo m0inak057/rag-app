@@ -53,3 +53,8 @@ pytest-django==4.7.0
 black==24.1.1
 flake8==6.1.0
 isort==5.13.2
+
+# RAG Evaluation
+ragas>=0.1.4
+datasets>=2.16.1
+langchain-community>=0.0.10

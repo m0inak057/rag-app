@@ -4,9 +4,9 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from rag.graph import get_rag_graph
+from rag.graph import create_rag_graph
 
-rag_graph = get_rag_graph()
+rag_graph = create_rag_graph()
 state = {
     "question": "What is inside the document?",
     "document_id": 1,
