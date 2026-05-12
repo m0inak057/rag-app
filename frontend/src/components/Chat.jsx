@@ -94,8 +94,9 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
               setReasoning(currentReasoning)
             } else if (payload.type === 'answer') {
               assistantContent = payload.content
+              sourcesFromServer = payload.sources || sourcesFromServer
             } else if (payload.type === 'complete') {
-              sourcesFromServer = payload.sources || []
+              sourcesFromServer = payload.sources || sourcesFromServer
             } else if (payload.type === 'error') {
               throw new Error(payload.content)
             }
@@ -140,15 +141,15 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
     return parts.map((part, i) => {
       const match = part.match(/^\[(\d+)\]$/)
       if (match) {
-        const sourceIndex = parseInt(match[1], 10) - 1
-        const sourceObj = sources?.[sourceIndex]
+        const citationNum = parseInt(match[1], 10)
+        const sourceObj = sources?.find(s => s.citation_number === citationNum)
         if (sourceObj) {
           return (
             <button
               key={i}
               onClick={() => setActiveSource(sourceObj)}
               className="inline-flex items-center justify-center mx-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-semibold rounded cursor-pointer transition-colors"
-              title={`View Source ${sourceIndex + 1}`}
+              title={`View Source ${citationNum}`}
             >
               {part}
             </button>
@@ -189,7 +190,7 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
                        <span className="font-medium text-gray-700">Sources:</span>
                        {msg.sources.map((src, i) => (
                          <div key={i} className="bg-gray-100 px-2 py-1 rounded">
-                           [{i+1}] {src.document_title} (Page {src.page_number})
+                           [{src.citation_number}] {src.document_title} (Page {src.page_number ?? 'N/A'})
                          </div>
                        ))}
                     </div>
@@ -257,7 +258,7 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Extracted Snippet</h4>
                <div className="bg-white border border-gray-200 rounded-lg p-4 font-serif text-sm leading-relaxed text-gray-800 shadow-sm relative overflow-hidden">
                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                 {activeSource.text}
+                 {activeSource.text_preview || activeSource.text}
                </div>
              </div>
            </div>

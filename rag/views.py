@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
+from django.db.models import Count
 import json
 
 from .models import Document, ChatConversation, ChatMessage, Collection
@@ -404,7 +405,9 @@ class CollectionListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Collection.objects.filter(user=self.request.user).order_by('-created_at')
+        return Collection.objects.filter(user=self.request.user).annotate(
+            document_count=Count('documents')
+        ).order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

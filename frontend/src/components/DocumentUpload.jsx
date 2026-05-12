@@ -88,7 +88,7 @@ export default function DocumentUpload({ onSuccess }) {
       formData.append('title', titleFromFile)
       
       if (selectedCollectionId) {
-        formData.append('collection_id', selectedCollectionId)
+        formData.append('collection', selectedCollectionId)
       }
 
       const response = await api.post('/documents/upload/', formData, {
