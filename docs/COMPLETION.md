@@ -1,7 +1,7 @@
 # Completion Tracker
 
-**Last updated:** May 8, 2026 (Phase 3 in progress)
-**Current phase:** Phase 3
+**Last updated:** May 12, 2026 (Phase 4 - Citations in progress)
+**Current phase:** Phase 4
 **Branch:** `v2-multidoc-eval`
 
 > Update this file at the end of every working session. Move tasks between sections as their state changes. The "Next 3 things" block at the bottom is what you should look at first when you sit down to work.
@@ -127,21 +127,21 @@ Mirror of `PHASES.md` checkboxes, with state markers. Update as you go.
 - ✅ `CollectionListCreateView`, `CollectionDetailView`.
 - ✅ Modify `DocumentUploadView` to require `collection_id`.
 - ✅ Wire URLs.
-- ⬜ Manual curl test.
+- ✅ Manual curl test (created test_phase3_api.py, verified all endpoints working)
 
 ### Phase 4 — Multi-document retrieval and citations
 
-- ⬜ Update `_vector_search_impl` to filter by collection.
-- ⬜ Update `hybrid_search_tool` to filter by collection.
-- ⬜ Enrich result dicts with `document_id`, `document_title`, `page_number`.
-- ⬜ (Optional) BM25 cache in Redis if perf demands.
-- ⬜ Add `collection_id` to `AgentState`.
-- ⬜ Update `retrieve_documents` node.
-- ⬜ Rewrite `generate_answer` prompt with numbered citation instructions.
-- ⬜ Implement `extract_and_validate_citations` post-processor.
-- ⬜ Update `ChatQuerySerializer` to accept `collection_id`.
-- ⬜ Update `ChatView` and SSE payload to include structured sources.
-- ⬜ Migrate conversations to belong to collections.
+- ✅ Update `_vector_search_impl` to filter by collection (already implemented).
+- ✅ Update `hybrid_search_tool` to filter by collection (already implemented).
+- ✅ Enrich result dicts with `document_id`, `document_title`, `page_number` (already implemented).
+- 🚫 (Optional) BM25 cache in Redis if perf demands (deferred, not required).
+- ✅ Add `collection_id` to `AgentState` (already implemented).
+- ✅ Update `retrieve_documents` node (already using collection_id).
+- ✅ Rewrite `generate_answer` prompt with numbered citation instructions (already implemented).
+- ✅ Implement `extract_and_validate_citations` post-processor (enhanced with structured sources).
+- ✅ Update `ChatQuerySerializer` to accept `collection_id` (already implemented).
+- ✅ Update `ChatView` and SSE payload to include structured sources (updated to return cited_sources array).
+- ✅ Migrate conversations to belong to collections (already done in Phase 1).
 - ⬜ Frontend: collections list/create page.
 - ⬜ Frontend: upload to specific collection.
 - ⬜ Frontend: render `[N]` markers as clickable pills.
@@ -199,9 +199,9 @@ Append every architectural decision here as you make it. Date + decision + reaso
 
 > When you sit down to work, look here first.
 
-1. **Phase 3.4** — Manual curl test.
-2. **Phase 4.1** — Update `_vector_search_impl` to filter by collection.
-3. **Phase 4.1** — Update `hybrid_search_tool` to filter by collection.
+1. **Phase 4** Frontend: Build Collections management page (list, create, delete).
+2. **Phase 4** Frontend: Implement citation rendering with clickable [N] markers.
+3. **Phase 4** Frontend: Build source side panel showing document, page, and snippet.
 
 ---
 
@@ -210,3 +210,13 @@ Append every architectural decision here as you make it. Date + decision + reaso
 A chronological note of what got done each session. Quick + dirty.
 
 - **(template)** — *2026-05-07, 1.5 hr* — Drafted PRD, ARCHITECTURE, PHASES, RULES, COMPLETION docs. No code changes yet.
+- **Phase 3.4 + Phase 4** — *2026-05-12, 2.5 hr* — Completed Phase 3 collections API testing. Enhanced Phase 4 citation validation:
+  - Created test_phase3_api.py: comprehensive manual test for collections endpoints (register, login, create collection, upload PDFs, verify grouping)
+  - Verified all Phase 3 endpoints working correctly
+  - Confirmed retrieval functions (tools.py) already support collection_id filtering
+  - Enhanced extract_and_validate_citations() in graph.py to build structured sources JSON
+  - Added cited_sources field to AgentState for tracking
+  - Updated ChatView to return cited_sources in SSE responses
+  - Created test_citation_validation.py: 6 unit tests, all passing (valid/invalid/duplicate/no citations, sequential citations, metadata)
+  - Committed changes with descriptive message
+  - Updated COMPLETION.md with Phase 3.4 + Phase 4 progress
