@@ -1,0 +1,284 @@
+[
+  {
+    "id": "q1",
+    "question": "What three quality aspects does the RAGAS framework evaluate in a RAG pipeline?",
+    "expected_documents": ["ragas.pdf"],
+    "expected_chunks_contain": ["faithfulness", "answer relevance", "context relevance"],
+    "ground_truth_answer": "RAGAS evaluates three quality aspects: Faithfulness (whether the answer is grounded in the retrieved context), Answer Relevance (whether the generated answer addresses the actual question), and Context Relevance (whether the retrieved context is focused and contains minimal irrelevant information). These three metrics are computed in a fully automated, reference-free manner using an LLM."
+  },
+  {
+    "id": "q2",
+    "question": "How does RAGAS compute the Faithfulness score for a generated answer?",
+    "expected_documents": ["ragas.pdf"],
+    "expected_chunks_contain": ["statements", "inferred from the context"],
+    "ground_truth_answer": "RAGAS computes Faithfulness by first using an LLM to decompose the generated answer into a set of individual statements. Each statement is then verified whether it can be inferred from the retrieved context using a verification prompt. The final Faithfulness score F is computed as the number of supported statements divided by the total number of statements."
+  },
+  {
+    "id": "q3",
+    "question": "What dataset did the RAGAS paper introduce to evaluate their framework, and how was it constructed?",
+    "expected_documents": ["ragas.pdf"],
+    "expected_chunks_contain": ["WikiEval", "Wikipedia pages"],
+    "ground_truth_answer": "RAGAS introduced the WikiEval dataset, constructed by selecting 50 Wikipedia pages covering events since the start of 2022. For each page, ChatGPT was prompted to generate a question answerable from the introductory section, and also to answer that question given the corresponding context. All questions were then annotated by two human annotators along the three quality dimensions."
+  },
+  {
+    "id": "q4",
+    "question": "What accuracy did RAGAS achieve on the WikiEval dataset for Faithfulness evaluation compared to baselines?",
+    "expected_documents": ["ragas.pdf"],
+    "expected_chunks_contain": ["0.95", "GPT Score"],
+    "ground_truth_answer": "RAGAS achieved an accuracy of 0.95 on Faithfulness evaluation on the WikiEval dataset, significantly outperforming the GPT Score baseline (0.72) and GPT Ranking baseline (0.54). This demonstrates that the RAGAS metrics align much more closely with human judgements compared to simpler prompting-based baselines."
+  },
+  {
+    "id": "q5",
+    "question": "What is the eRAG approach proposed in the retrieval quality evaluation paper and what problem does it solve?",
+    "expected_documents": ["retrieval_quality.pdf"],
+    "expected_chunks_contain": ["eRAG", "document individually"],
+    "ground_truth_answer": "eRAG is a novel retrieval evaluation approach where each document in the retrieval list is individually fed to the LLM within the RAG system, and the output generated for each document is evaluated based on downstream task ground truth labels. This solves the problem that traditional end-to-end evaluation is computationally expensive and that query-document relevance labels show low correlation with actual downstream RAG performance."
+  },
+  {
+    "id": "q6",
+    "question": "By how much does eRAG outperform baseline methods in terms of Kendall tau correlation with downstream RAG performance?",
+    "expected_documents": ["retrieval_quality.pdf"],
+    "expected_chunks_contain": ["0.168", "0.494"],
+    "ground_truth_answer": "eRAG achieves improvements in Kendall's tau correlation ranging from 0.168 to 0.494 compared to baseline methods across the evaluated datasets. This is a substantial improvement over approaches using KILT Provenance labels or LLM-based relevance annotation, which showed much lower correlation with the downstream performance of the LLM."
+  },
+  {
+    "id": "q7",
+    "question": "How much more memory efficient is eRAG compared to end-to-end evaluation?",
+    "expected_documents": ["retrieval_quality.pdf"],
+    "expected_chunks_contain": ["50 times", "memory"],
+    "ground_truth_answer": "eRAG is up to 50 times more memory efficient than end-to-end evaluation. In document-level configuration, eRAG demonstrates 30 to 48 times more memory efficiency across different datasets. Additionally, eRAG is on average 2.468 times faster than end-to-end evaluation in terms of runtime."
+  },
+  {
+    "id": "q8",
+    "question": "What are the three key questions that the Auepora framework in the RAG evaluation survey addresses?",
+    "expected_documents": ["rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["What to Evaluate", "How to Evaluate", "How to Measure"],
+    "ground_truth_answer": "The Auepora (A Unified Evaluation Process of RAG) framework addresses three key questions: What to Evaluate (Target), How to Evaluate (Dataset), and How to Measure (Metric). This structured approach provides a systematic methodology for assessing RAG systems by covering all possible pairs between Evaluable Outputs and Ground Truths across both the retrieval and generation components."
+  },
+  {
+    "id": "q9",
+    "question": "What additional requirements beyond retrieval and generation does the RAG evaluation survey identify?",
+    "expected_documents": ["rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["Noise Robustness", "Negative Rejection", "Counterfactual Robustness"],
+    "ground_truth_answer": "Beyond the core retrieval and generation components, the RAG evaluation survey identifies several additional requirements: Latency (response speed), Diversity (variety of retrieved documents and responses), Noise Robustness (handling irrelevant information), Negative Rejection (withholding responses when information is insufficient), and Counterfactual Robustness (identifying and disregarding incorrect information). These are crucial for practical real-world RAG system evaluation."
+  },
+  {
+    "id": "q10",
+    "question": "What four metrics does the TRACe framework in RAGBench define to evaluate RAG systems?",
+    "expected_documents": ["ragbench.pdf"],
+    "expected_chunks_contain": ["Utilization", "Relevance", "Adherence", "Completeness"],
+    "ground_truth_answer": "The TRACe framework defines four metrics: Utilization (fraction of retrieved context used by the generator), Relevance (fraction of retrieved context relevant to the query), Adherence (whether all parts of the response are grounded in the context, synonymous with faithfulness), and Completeness (how well the response incorporates all relevant information from the context). Utilization, Adherence, and Completeness measure generator quality, while Relevance measures retriever quality."
+  },
+  {
+    "id": "q11",
+    "question": "How many examples does RAGBench contain and what domains does it cover?",
+    "expected_documents": ["ragbench.pdf"],
+    "expected_chunks_contain": ["100k", "domains"],
+    "ground_truth_answer": "RAGBench contains 100k examples spanning five industry-specific domains: bio-medical research (PubMedQA, CovidQA), general knowledge (HotpotQA, MS Marco, HAGRID, ExpertQA), legal contracts (CUAD), customer support (DelucionQA, EManual, TechQA), and finance (FinQA, TAT-QA). It is sourced from 12 component datasets representing real-world RAG application scenarios."
+  },
+  {
+    "id": "q12",
+    "question": "What finding did RAGBench report about fine-tuned models versus LLM judges for RAG evaluation?",
+    "expected_documents": ["ragbench.pdf"],
+    "expected_chunks_contain": ["DeBERTa", "finetuned"],
+    "ground_truth_answer": "RAGBench found that a 400M-parameter DeBERTa-large model fine-tuned on RAGBench data outperforms few-shot LLM judges (including GPT-3.5, RAGAS, and TruLens) across numerous domains and task types on the hallucination detection task. This challenges the assumption that large LLM-based evaluators are always superior for RAG evaluation tasks."
+  },
+  {
+    "id": "q13",
+    "question": "What are the three types of perturbations that the RARE framework evaluates RAG systems against?",
+    "expected_documents": ["rare_robustness.pdf"],
+    "expected_chunks_contain": ["query", "document", "retrieval"],
+    "ground_truth_answer": "The RARE framework evaluates RAG systems against three types of perturbations: Query Robustness (performance under perturbed queries including character-level changes, word-level substitutions, irrelevant information insertion, and grammar rewrites), Document Robustness (performance under perturbed documents), and Real-World Retrieval Robustness (performance under actual retrieval results from embedding models). These are formalized as RARE-Met robustness metrics."
+  },
+  {
+    "id": "q14",
+    "question": "What does the RARE paper find about multi-hop versus single-hop query robustness?",
+    "expected_documents": ["rare_robustness.pdf"],
+    "expected_chunks_contain": ["multi-hop", "single-hop", "lower robustness"],
+    "ground_truth_answer": "The RARE paper consistently finds that RAG systems demonstrate lower robustness on multi-hop queries compared to single-hop queries across all domains and models tested. This trend is amplified in smaller models, suggesting that multi-hop reasoning capabilities require substantial model capacity to maintain robustness under perturbations. The most significant gap between single-hop and multi-hop robustness appears in the policy domain."
+  },
+  {
+    "id": "q15",
+    "question": "What domains and how many documents does the RARE-Set benchmark cover?",
+    "expected_documents": ["rare_robustness.pdf"],
+    "expected_chunks_contain": ["527", "finance", "economics", "policy"],
+    "ground_truth_answer": "RARE-Set covers three domains: finance (199 SEC 10-K filings from S&P 500 companies), economics (114 OECD economic surveys), and policy (214 Consolidated Annual Performance and Evaluation Reports from HUD-funded programs), totaling 527 expert-level time-sensitive documents and 48,295 questions. The benchmark is unique in being dynamic, time-sensitive, and automatically generated through a knowledge-graph-driven pipeline."
+  },
+
+  {
+    "id": "q16",
+    "question": "How do RAGAS and RAGBench differ in their approach to measuring context quality?",
+    "expected_documents": ["ragas.pdf", "ragbench.pdf"],
+    "expected_chunks_contain": ["context relevance", "utilization"],
+    "ground_truth_answer": "RAGAS measures Context Relevance as the fraction of sentences extracted from the retrieved context that are crucial to answer the question, penalizing inclusion of redundant information. RAGBench's TRACe framework goes further by introducing two separate metrics — Context Relevance (fraction of retrieved context relevant to the query) and Context Utilization (fraction of retrieved context actually used by the generator) — allowing practitioners to distinguish between a poor retriever and a weak generator."
+  },
+  {
+    "id": "q17",
+    "question": "How do the RAGAS and eRAG papers differ in what component of the RAG pipeline they primarily evaluate?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf"],
+    "expected_chunks_contain": ["faithfulness", "retrieval model"],
+    "ground_truth_answer": "RAGAS primarily focuses on evaluating the generation component of RAG pipelines, measuring Faithfulness, Answer Relevance, and Context Relevance from the perspective of the generated output. eRAG specifically focuses on evaluating the retrieval component, proposing a method to generate document-level relevance labels that better correlate with downstream LLM performance. While RAGAS treats retrieval evaluation indirectly, eRAG makes retrieval evaluation the central contribution."
+  },
+  {
+    "id": "q18",
+    "question": "How do RARE and RAGBench differ in their approach to testing RAG robustness?",
+    "expected_documents": ["ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["perturbation", "domain"],
+    "ground_truth_answer": "RAGBench tests robustness implicitly through diverse domains and task types, measuring hallucination rates across different retriever configurations, LLMs, and prompt templates without systematically perturbing inputs. RARE explicitly and systematically evaluates robustness by introducing controlled perturbations at both query level (character, word, grammar, irrelevant info) and document level (lexical similar without answer, lexical different with answer), providing formal robustness metrics that measure a model's ability to remain correct or safely refuse under perturbation."
+  },
+  {
+    "id": "q19",
+    "question": "How do the evaluation datasets used by RAGAS and the RAG evaluation survey differ in their construction strategy?",
+    "expected_documents": ["ragas.pdf", "rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["WikiEval", "LLMs"],
+    "ground_truth_answer": "RAGAS constructed WikiEval manually by selecting 50 Wikipedia pages post-2022 and using ChatGPT to generate and answer questions with human annotation for ground truth. The RAG evaluation survey highlights that recent benchmarks have moved toward using powerful LLMs to automatically generate datasets at scale from diverse sources including news articles, domain-specific content, and structured databases, enabling more dynamic and real-world representative evaluation compared to RAGAS's curated Wikipedia approach."
+  },
+  {
+    "id": "q20",
+    "question": "How does RARE's knowledge-graph-driven pipeline differ from the dataset construction approaches described in the RAG evaluation survey?",
+    "expected_documents": ["rag_eval_survey.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["knowledge graph", "multi-hop"],
+    "ground_truth_answer": "The RAG evaluation survey describes existing dataset construction strategies as either using existing QA datasets (like NQ, HotpotQA) or generating datasets using LLMs from online news articles. RARE's RARE-Get pipeline is distinctly different: it uses knowledge graph triplet extraction from domain-specific documents to automatically generate single-hop and multi-hop questions with provable multi-document reasoning requirements. This enables controlled complexity levels and dynamic updates as source documents change, which existing survey-described approaches cannot do."
+  },
+  {
+    "id": "q21",
+    "question": "How do eRAG and RARE differ in their treatment of retrieval evaluation?",
+    "expected_documents": ["retrieval_quality.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["document-level", "robustness"],
+    "ground_truth_answer": "eRAG focuses on evaluating which retrieved documents are most useful for downstream LLM performance, providing document-level relevance labels by running the LLM on each document individually and measuring task performance. RARE evaluates retrieval from a robustness perspective, testing how well the full RAG system performs when retrieved documents are perturbed (lexically similar but answer-absent, or lexically different but answer-present), and also evaluates real-world retrieval results. eRAG answers 'which documents are good?' while RARE answers 'how fragile is the system to retrieval quality variation?'"
+  },
+  {
+    "id": "q22",
+    "question": "How do RAGAS and the RAG evaluation survey's Auepora framework align in their definitions of Faithfulness?",
+    "expected_documents": ["ragas.pdf", "rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["faithfulness", "grounded"],
+    "ground_truth_answer": "Both RAGAS and the Auepora framework define Faithfulness consistently as the degree to which the generated response is grounded in and supported by the retrieved documents. RAGAS operationalizes this by decomposing answers into statements and verifying each against the context. The Auepora framework formalizes it as a pairwise relationship between Response and Relevant Documents, measuring consistency between generated content and source documents. RAGBench's TRACe framework uses the term 'Adherence' for the same concept."
+  },
+  {
+    "id": "q23",
+    "question": "How do RAGBench and RARE differ in their findings about the relationship between model size and evaluation performance?",
+    "expected_documents": ["ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["model size", "larger"],
+    "ground_truth_answer": "RAGBench found that a smaller fine-tuned DeBERTa model (400M parameters) outperforms much larger LLM judges on RAG evaluation tasks, suggesting model size alone does not determine evaluation quality when the model is properly trained on the right data. RARE found that larger generator models generally demonstrate superior robustness, but with nuance: Qwen3-32B achieves lower robustness than smaller Qwen3-8B and Qwen3-4B models, showing that architectural design and training methodology matter more than size alone."
+  },
+  {
+    "id": "q24",
+    "question": "How do the retrieval evaluation metrics proposed in eRAG compare to those described in the RAG evaluation survey?",
+    "expected_documents": ["retrieval_quality.pdf", "rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["Kendall", "MAP", "NDCG"],
+    "ground_truth_answer": "The RAG evaluation survey describes traditional retrieval metrics such as MAP, MRR, NDCG, Precision, and Recall, noting that rank-based metrics may not be fully suitable for RAG systems since they assess each document independently. eRAG empirically validates this concern, showing that KILT Provenance labels and LLM-based relevance annotation using these traditional metrics have very low correlation with actual downstream RAG performance. eRAG's approach of using the downstream LLM's own performance per document as the relevance signal achieves substantially higher correlation across all these same metrics."
+  },
+  {
+    "id": "q25",
+    "question": "How does RAGAS's reference-free evaluation compare to the ground-truth-dependent approaches described in the RAG evaluation survey?",
+    "expected_documents": ["ragas.pdf", "rag_eval_survey.pdf"],
+    "expected_chunks_contain": ["reference-free", "ground truth"],
+    "ground_truth_answer": "RAGAS is explicitly designed as a reference-free evaluation framework, meaning it does not require ground truth answers to evaluate RAG pipelines. This is a key advantage highlighted in the paper for faster evaluation cycles. The RAG evaluation survey notes that most benchmarks do require ground truth pairs, using metrics like BLEU, ROUGE, F1, and Exact Match that compare generated outputs against reference answers. The survey also highlights the emerging trend of using LLMs as judges for reference-free evaluation, which is the approach RAGAS pioneered."
+  },
+  {
+    "id": "q26",
+    "question": "How do RARE and eRAG complement each other in evaluating the retrieval component of a RAG system?",
+    "expected_documents": ["retrieval_quality.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["retrieval", "robustness"],
+    "ground_truth_answer": "eRAG and RARE complement each other by evaluating retrieval from different angles. eRAG answers the quality question — given a retrieval list, which documents actually help the LLM perform well on downstream tasks — by using the LLM itself as the evaluator of individual documents. RARE answers the robustness question — how well does the full RAG system perform when the retrieved documents are perturbed or when real-world retrieval is imperfect. Together they provide both a quality signal and a stress-test of retrieval components."
+  },
+  {
+    "id": "q27",
+    "question": "How do RAGBench's TRACe metrics and RARE's robustness metrics serve different purposes for a RAG practitioner?",
+    "expected_documents": ["ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["TRACe", "RARE-Met"],
+    "ground_truth_answer": "RAGBench's TRACe metrics (Utilization, Relevance, Adherence, Completeness) are diagnostic quality metrics that help practitioners understand what is going wrong in their RAG system under normal operating conditions — identifying weak retrievers, generators that fail to use context, or hallucinating models. RARE's robustness metrics (Query, Document, Real-World Retrieval Robustness) test how resilient the system is under adversarial or noisy conditions, revealing fragilities that only appear when inputs are perturbed. TRACe diagnoses steady-state quality while RARE stress-tests system resilience."
+  },
+  {
+    "id": "q28",
+    "question": "How do all five papers collectively approach the challenge of hallucination detection in RAG systems?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["hallucination", "faithfulness"],
+    "ground_truth_answer": "All five papers address hallucination from different angles: RAGAS measures it through Faithfulness by checking if answer statements can be inferred from context. eRAG indirectly reduces hallucination risk by identifying which retrieved documents are genuinely useful. The RAG evaluation survey catalogs multiple hallucination-focused benchmarks and metrics including Misleading Rate and Error Detection Rate. RAGBench's TRACe defines Adherence as a boolean hallucination detector and finds 1-20% hallucination rates across its component datasets. RARE evaluates hallucination robustness by testing whether models hallucinate when documents contain no answer, finding larger models are more prone to hallucinating than smaller ones in such scenarios."
+  },
+  {
+    "id": "q29",
+    "question": "How do the five papers differ in their use of LLMs as evaluators versus human annotation?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["LLM as a Judge", "human"],
+    "ground_truth_answer": "RAGAS uses GPT-3.5 as the LLM evaluator and validates against human annotations on WikiEval, achieving 95% agreement on Faithfulness. eRAG uses the RAG pipeline's own LLM as the document annotator, avoiding external judge bias. The RAG evaluation survey reviews the 'LLM as a Judge' trend and notes challenges in aligning with human judgment and establishing consistent grading scales. RAGBench uses GPT-4 as annotator with chain-of-thought, achieving 93-95% agreement with humans, but finds a fine-tuned DeBERTa outperforms LLM judges. RARE uses Claude 3.5 Haiku for quality assurance of generated Q/A pairs and for final answer evaluation to minimize bias."
+  },
+  {
+    "id": "q30",
+    "question": "What is the consensus across all papers on the most important dimensions for evaluating RAG generation quality?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["faithfulness", "relevance"],
+    "ground_truth_answer": "Across all five papers, there is strong consensus that Faithfulness/Adherence (whether the generated answer is grounded in retrieved context) and Answer Relevance (whether the answer addresses the question) are the most critical generation quality dimensions. RAGAS, RAGBench's TRACe, and the Auepora framework all independently identify these as core metrics. The papers also converge on Context Relevance/Utilization as important for measuring retrieval efficiency. Beyond these core dimensions, robustness to noise (RARE) and computational efficiency of evaluation (eRAG) are identified as important practical considerations."
+  },
+
+  {
+    "id": "q31",
+    "question": "Based on all papers, what is the consensus on the main limitation of using traditional IR metrics like NDCG and MAP for RAG retrieval evaluation?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["correlation", "downstream"],
+    "ground_truth_answer": "The consensus across papers is that traditional IR metrics like NDCG and MAP were designed for ranked list evaluation where position matters, but in RAG systems the LLM consumes retrieved documents as a set. eRAG empirically demonstrates that these metrics, when based on human relevance labels, show very low correlation (Kendall's tau often below 0.2) with actual downstream LLM performance. The RAG evaluation survey explicitly states that ranking-based evaluation methodology is not fully suitable for RAG systems and calls for more RAG-specific retrieval evaluation metrics. This gap motivates both eRAG's per-document LLM evaluation approach and RARE's robustness-based evaluation."
+  },
+  {
+    "id": "q32",
+    "question": "Based on all papers, what is the consensus on the role of domain-specific data in RAG evaluation benchmarks?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["domain", "real-world"],
+    "ground_truth_answer": "All papers converge on the view that domain-specific evaluation data is critical for meaningful RAG assessment. The RAG evaluation survey notes that general QA datasets fail to capture domain-specific challenges. RAGBench explicitly covers five industry domains and sources data from real-world corpora like legal contracts, medical abstracts, and financial reports. RARE focuses exclusively on finance, economics, and policy documents, finding that robustness varies significantly across domains — RAG systems perform best on standardized finance terminology and worst on complex economics surveys. This consensus challenges the common practice of evaluating RAG systems only on general-knowledge Wikipedia-based datasets."
+  },
+  {
+    "id": "q33",
+    "question": "Based on all papers, what is the consensus on whether automated LLM-based evaluation can replace human annotation for RAG systems?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["human", "automated"],
+    "ground_truth_answer": "The consensus across papers is that automated LLM-based evaluation can closely approximate but not fully replace human annotation. RAGAS achieves up to 95% agreement with humans on Faithfulness. RAGBench's GPT-4 annotator achieves 93-95% agreement on Adherence. However, the RAG evaluation survey notes challenges in aligning LLM judges with human preferences on subjective dimensions and the lack of universal grading scales. RAGBench also shows that a fine-tuned smaller model can outperform LLM judges on specific tasks. The papers collectively recommend LLM-based evaluation as a practical and scalable approximation, with human annotation still serving as the gold standard for validation."
+  },
+  {
+    "id": "q34",
+    "question": "Based on all papers, what is the consensus on how context length affects RAG system performance and evaluation?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["context", "length"],
+    "ground_truth_answer": "The papers converge on the finding that longer context is generally detrimental to RAG performance and increases evaluation complexity. RAGAS notes that when context passages are too long, LLMs are less effective at exploiting that context, especially for information in the middle of the passage. eRAG shows that increasing the number of retrieved documents leads to a decline in correlation between evaluation metrics and downstream performance. RAGBench's TRACe explicitly introduces Context Utilization to measure whether generators actually use the retrieved context, finding that long contexts with many irrelevant spans hurt generation quality. The papers collectively recommend focused, concise retrieval over large context windows."
+  },
+  {
+    "id": "q35",
+    "question": "Based on all papers, what gap in existing RAG evaluation benchmarks is most commonly identified and what solutions are proposed?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["benchmark", "evaluation"],
+    "ground_truth_answer": "The most commonly identified gap across all papers is the lack of unified, comprehensive evaluation standards that cover all dimensions of RAG systems simultaneously. RAGAS addresses this by proposing reference-free automated metrics. eRAG addresses the specific gap in retrieval evaluation correlation. The RAG evaluation survey identifies that most benchmarks address only one or a few aspects and lack holistic analysis. RAGBench responds by creating a 100k-example multi-domain benchmark with a standardized metric suite. RARE addresses the gap in robustness evaluation under real-world noise conditions. Collectively, they propose moving from single-dimension evaluation to multi-dimensional frameworks that cover retrieval quality, generation faithfulness, robustness, and domain specificity."
+  },
+  {
+    "id": "q36",
+    "question": "Based on all papers, what is the consensus view on the importance of evaluating RAG systems on multi-hop reasoning tasks?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["multi-hop", "reasoning"],
+    "ground_truth_answer": "All papers that address multi-hop evaluation converge on the view that it is a critical and underserved evaluation dimension. The RAG evaluation survey lists MultiHop-RAG as an important benchmark specifically targeting multi-hop retrieval. RAGBench includes HotpotQA which requires multi-hop reasoning across multiple context documents. RARE makes multi-hop evaluation a central contribution, introducing chained, star-shaped, and inverted-star-shaped query patterns via knowledge graph traversal, and finding that all tested models show significantly lower robustness on multi-hop queries than single-hop queries. This consensus indicates that single-hop benchmarks systematically overestimate real-world RAG capability."
+  },
+  {
+    "id": "q37",
+    "question": "Based on all papers, what is the consensus on using self-correction or iterative mechanisms to improve RAG pipeline quality?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["retrieval", "quality"],
+    "ground_truth_answer": "While no single paper proposes identical self-correction mechanisms, the papers collectively support the value of feedback loops in RAG systems. RAGAS's evaluation framework is designed to enable faster evaluation cycles that support iterative improvement of RAG architectures. eRAG's document-level relevance labels provide granular retrieval feedback that can drive retriever optimization. RAGBench's case study shows that chain-of-thought prompting reduces hallucinations and increases context utilization and completeness, suggesting that iterative reasoning within generation is beneficial. RARE's findings on perturbation sensitivity suggest that systems with self-correction loops would be more robust, directly validating the design choice of implementing self-correction in production RAG systems."
+  },
+  {
+    "id": "q38",
+    "question": "Based on all papers, what is the consensus on the relationship between retrieval quality and generation quality in RAG systems?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["retrieval", "generation"],
+    "ground_truth_answer": "All papers agree that retrieval quality and generation quality are interdependent but should be evaluated separately. eRAG demonstrates that the LLM is the best judge of retrieval quality since human-annotated relevance labels poorly predict downstream performance. RAGBench's case study shows that the choice of retriever affects Context Relevance scores which in turn affects generation quality. The RAG evaluation survey emphasizes that the whole system cannot be understood by evaluating each component in isolation. RARE shows that document-level perturbations can independently affect generation robustness even when query robustness is maintained. The consensus is that joint but decomposed evaluation — measuring both components with metrics sensitive to their interaction — is the correct approach."
+  },
+  {
+    "id": "q39",
+    "question": "Based on all papers, what computational efficiency considerations are identified as important for practical RAG evaluation?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["computational", "efficient"],
+    "ground_truth_answer": "Computational efficiency is a recurring concern across all papers. RAGAS proposes reference-free automated metrics specifically to enable faster evaluation cycles without expensive human annotation. eRAG demonstrates that its approach is 2.5x faster and up to 50x more memory efficient than end-to-end evaluation. The RAG evaluation survey notes the resource-intensive nature of using LLMs for data generation and validation, recommending evaluation methodologies that use smaller amounts of data while maintaining validity. RAGBench shows that a fine-tuned 400M DeBERTa model achieves competitive performance with billion-parameter LLM judges at much lower inference cost. RARE's full experimental suite required approximately five days on 16 NVIDIA L40S GPUs, highlighting the scale challenge."
+  },
+  {
+    "id": "q40",
+    "question": "Based on all papers, what future directions are most commonly recommended for advancing RAG evaluation research?",
+    "expected_documents": ["ragas.pdf", "retrieval_quality.pdf", "rag_eval_survey.pdf", "ragbench.pdf", "rare_robustness.pdf"],
+    "expected_chunks_contain": ["future", "benchmark"],
+    "ground_truth_answer": "The papers collectively recommend several future directions: (1) Dynamic benchmarks that update as world knowledge changes, rather than static datasets that allow memorization — emphasized by RARE. (2) More RAG-specific retrieval metrics beyond traditional IR metrics — emphasized by eRAG and the survey. (3) Cross-domain generalization testing to ensure evaluation validity beyond in-domain data — emphasized by RAGBench. (4) Standardized, unified evaluation frameworks that cover retrieval, generation, and robustness holistically — recommended by the survey and RAGBench. (5) More efficient evaluation models that do not require billion-parameter LLM judges — demonstrated by RAGBench's DeBERTa finding. (6) Better multi-hop and complex reasoning benchmarks — highlighted by RARE."
+  }
+]

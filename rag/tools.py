@@ -117,21 +117,35 @@ def hybrid_search_tool(query: str, document_id: int = None, collection_id: int =
         vector_results = _vector_search_impl(query, document_id=document_id, collection_id=collection_id, top_k=len(all_chunks))
         vector_scores = {r['id']: r['relevance_score'] for r in vector_results}
         
-        # Step 3: Keyword search (BM25)
+        # Step 3: Keyword search (BM25) with improved preprocessing
+        from nltk.corpus import stopwords
+        try:
+            stop_words = set(stopwords.words('english'))
+        except:
+            stop_words = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'be', 'been'])
+
+        # Preprocess texts and query
+        def preprocess(text):
+            words = text.lower().split()
+            return [w for w in words if w.isalnum() and w not in stop_words and len(w) > 2]
+
         texts = [chunk.text for chunk in all_chunks]
-        bm25 = BM25Okapi([text.split() for text in texts])
-        bm25_scores = bm25.get_scores(query.split())
-        
+        preprocessed_texts = [preprocess(text) for text in texts]
+        preprocessed_query = preprocess(query)
+
+        bm25 = BM25Okapi(preprocessed_texts)
+        bm25_scores = bm25.get_scores(preprocessed_query)
+
         # Normalize BM25 scores to 0-1 range
         max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1
         bm25_scores_normalized = [score / max_bm25 for score in bm25_scores]
-        
-        # Step 4: Combine scores (50% vector, 50% keyword)
+
+        # Step 4: Combine scores (70% vector, 30% BM25 - vector search is more semantically accurate)
         combined_results = []
         for idx, chunk in enumerate(all_chunks):
             vector_score = vector_scores.get(chunk.id, 0)
             bm25_score = bm25_scores_normalized[idx]
-            combined_score = 0.5 * vector_score + 0.5 * bm25_score
+            combined_score = 0.7 * vector_score + 0.3 * bm25_score
             
             combined_results.append({
                 'id': chunk.id,
@@ -245,19 +259,24 @@ def grade_documents_tool(documents: List[dict], query: str) -> dict:
         irrelevant_docs = []
         
         for doc in documents:
-            # Create a grading prompt
-            prompt = f"""You are a grading assistant. Your job is to assess the relevance of a document to a user query.
+            # Create a strict grading prompt
+            prompt = f"""You are a strict grading assistant. Assess if a document directly contains information that answers the user's query.
+
+CRITICAL: Grade ONLY on direct relevance.
+- Grade YES only if the document explicitly addresses the query topic
+- Grade NO if it's only tangentially related or vague
+- Grade NO if it's background/context without direct relevance
 
 User Query: {query}
 
 Document:
 {doc['text'][:500]}
 
-Is this document relevant to the query? Answer with ONLY "YES" or "NO", nothing else."""
-            
+Can this document DIRECTLY answer or inform the user's query? Answer with ONLY "YES" or "NO", nothing else."""
+
             response = llm.generate(prompt)
             answer = response['text'].strip().upper()
-            
+
             if answer.startswith("YES"):
                 relevant_docs.append(doc)
             else:
@@ -271,3 +290,46 @@ Is this document relevant to the query? Answer with ONLY "YES" or "NO", nothing 
     
     except Exception as e:
         raise ValueError(f"Document grading failed: {str(e)}")
+
+
+def rerank_with_cross_encoder(query: str, documents: List[dict], top_k: int = 5) -> List[dict]:
+    """
+    Re-rank documents using a cross-encoder for better relevance matching.
+
+    Args:
+        query: The user's question
+        documents: List of document chunks to re-rank
+        top_k: Number of top results to return
+
+    Returns:
+        Re-ranked list of documents
+    """
+    if not documents:
+        return []
+
+    try:
+        from sentence_transformers import CrossEncoder
+
+        # Use a lightweight cross-encoder model for ranking
+        cross_encoder = CrossEncoder('cross-encoder/mmarco-MiniLMv2-L12-H384')
+
+        # Prepare pairs: (query, chunk_text)
+        pairs = [[query, doc['text'][:500]] for doc in documents]
+
+        # Get cross-encoder scores
+        scores = cross_encoder.predict(pairs)
+
+        # Attach scores to documents
+        for i, doc in enumerate(documents):
+            doc['cross_encoder_score'] = float(scores[i])
+
+        # Re-sort by cross-encoder score
+        reranked = sorted(documents, key=lambda x: x['cross_encoder_score'], reverse=True)
+        return reranked[:top_k]
+
+    except ImportError:
+        # If CrossEncoder not available, return original ranking
+        return documents[:top_k]
+    except Exception as e:
+        # Fall back to original ordering on error
+        return documents[:top_k]
