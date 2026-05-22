@@ -164,10 +164,6 @@ SIMPLE_JWT = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ─── Groq LLM Configuration ───
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-GROQ_MODEL = 'llama-3.3-70b-versatile'  # Best quality on Groq free tier
-
 # ─── Celery Configuration ───
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
@@ -176,24 +172,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-# ─── Gemini LLM Configuration (with cost controls) ───
+# ─── Gemini LLM Configuration ───
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = 'gemini-2.5-flash'  # Most cost-effective model
-
-# CRITICAL: Gemini Cost Controls
-# Set strict limits to prevent unexpected charges
-GEMINI_RPM = int(os.getenv('GEMINI_RPM', '60'))  # Requests per minute limit
-GEMINI_DAILY_LIMIT = int(os.getenv('GEMINI_DAILY_LIMIT', '1000'))  # Daily request limit
-GEMINI_MONTHLY_BUDGET = float(os.getenv('GEMINI_MONTHLY_BUDGET', '5.0'))  # Max monthly spend in USD
 
 # Cache Configuration for tracking usage
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'redis_cache.sentinel.SentinelClient',
-        },
         'TIMEOUT': 86400,  # 24 hours
     }
 }

@@ -8,65 +8,12 @@ import json
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from functools import wraps
-import time
-import threading
 
-import google.generativeai as genai
+import google.genai as genai
 from django.core.cache import cache
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
-
-
-class RateLimiter:
-    """
-    Rate limiter to prevent API key abuse.
-    Tracks requests per minute and daily usage.
-    """
-    
-    def __init__(self, requests_per_minute: int = 60, daily_limit: int = 1000):
-        self.requests_per_minute = requests_per_minute
-        self.daily_limit = daily_limit
-        self.lock = threading.Lock()
-    
-    def is_allowed(self, key: str = "gemini_global") -> bool:
-        """
-        Check if a request is allowed based on rate limits.
-        """
-        with self.lock:
-            # Check per-minute limit
-            minute_key = f"rate_limit:minute:{key}:{datetime.now().strftime('%Y%m%d%H%M')}"
-            minute_count = cache.get(minute_key, 0)
-            
-            if minute_count >= self.requests_per_minute:
-                logger.warning(f"Rate limit exceeded (per minute) for {key}")
-                return False
-            
-            cache.set(minute_key, minute_count + 1, 60)  # Expire after 60 seconds
-            
-            # Check daily limit
-            day_key = f"rate_limit:daily:{key}:{datetime.now().strftime('%Y%m%d')}"
-            day_count = cache.get(day_key, 0)
-            
-            if day_count >= self.daily_limit:
-                logger.warning(f"Rate limit exceeded (daily) for {key}")
-                return False
-            
-            cache.set(day_key, day_count + 1, 86400)  # Expire after 24 hours
-            
-            return True
-    
-    def get_remaining_requests(self, key: str = "gemini_global") -> dict:
-        """Get remaining requests for the day."""
-        day_key = f"rate_limit:daily:{key}:{datetime.now().strftime('%Y%m%d')}"
-        day_count = cache.get(day_key, 0)
-        
-        return {
-            'used_today': day_count,
-            'remaining_today': max(0, self.daily_limit - day_count),
-            'max_daily': self.daily_limit,
-        }
 
 
 class CostTracker:
@@ -153,72 +100,49 @@ class GeminiLLM:
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
         self.api_key = api_key or os.getenv('GEMINI_API_KEY')
         self.model = model
-        self.rate_limiter = RateLimiter(
-            requests_per_minute=settings.GEMINI_RPM,
-            daily_limit=settings.GEMINI_DAILY_LIMIT,
-        )
-        
+
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
-        
-        # Configure Gemini
-        genai.configure(api_key=self.api_key)
+
+        # Initialize Gemini client
+        self.client = genai.Client(api_key=self.api_key)
     
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """
-        Generate text with Gemini with cost controls.
+        Generate text with Gemini.
         """
-        # Rate limits disabled per request
-        # if not self.rate_limiter.is_allowed():
-        #     raise Exception("Rate limit exceeded. Try again later.")
-        
         try:
             # Use safe default max tokens
             output_tokens = min(
                 max_tokens or self.MODELS[self.model]['max_tokens'],
                 self.MODELS[self.model]['max_tokens']
             )
-            
-            model_instance = genai.GenerativeModel(self.model)
-            
-            response = model_instance.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=output_tokens,
-                    temperature=0.7,
-                    top_p=0.95,
-                    top_k=40,
-                ),
-                safety_settings=[
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-                    },
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-                    },
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-                    },
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-                    },
-                ],
-            )
-            
-            # Log usage
-            usage = response.usage_metadata
-            CostTracker.log_usage(
-                prompt_tokens=usage.prompt_character_count // 4,  # Rough estimate
-                completion_tokens=usage.candidates_token_count,
+
+            response = self.client.models.generate_content(
                 model=self.model,
+                contents=prompt,
+                config={
+                    'max_output_tokens': output_tokens,
+                    'temperature': 0.7,
+                    'top_p': 0.95,
+                    'top_k': 40,
+                }
             )
-            
+
+            # Log usage (google.genai response structure differs)
+            if hasattr(response, 'usage_metadata'):
+                usage = response.usage_metadata
+                prompt_tokens = getattr(usage, 'prompt_token_count', 0) or (
+                    getattr(usage, 'prompt_character_count', 0) // 4 if hasattr(usage, 'prompt_character_count') else 0
+                )
+                CostTracker.log_usage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=getattr(usage, 'candidates_token_count', 0),
+                    model=self.model,
+                )
+
             return response.text
-        
+
         except Exception as e:
             logger.error(f"Gemini API error: {str(e)}")
             raise
@@ -226,12 +150,9 @@ class GeminiLLM:
     def get_usage_stats(self) -> dict:
         """Get current usage statistics."""
         daily_cost = CostTracker.get_daily_cost()
-        remaining = self.rate_limiter.get_remaining_requests()
-        
+
         return {
             'daily_cost': daily_cost,
-            'remaining_requests_today': remaining['remaining_today'],
-            'max_daily_requests': remaining['max_daily'],
         }
 
 
@@ -247,27 +168,3 @@ def get_gemini_llm() -> GeminiLLM:
         gemini_llm = GeminiLLM(model=settings.GEMINI_MODEL)
     
     return gemini_llm
-
-
-def rate_limit_endpoint(func):
-    """
-    Decorator to add rate limiting to API endpoints.
-    """
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        llm = get_gemini_llm()
-        
-        if not llm.rate_limiter.is_allowed():
-            from rest_framework.response import Response
-            from rest_framework import status
-            return Response(
-                {
-                    "error": "Rate limit exceeded. Please try again later.",
-                    "usage": llm.get_usage_stats(),
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-        
-        return func(*args, **kwargs)
-    
-    return wrapper
