@@ -240,8 +240,8 @@ def run_ablation_study():
 
     baseline = ablation_results['A_Full']
 
-    print("\n| Config | Recall Δ | MRR Δ | Faithfulness Δ | Relevancy Δ |")
-    print("|--------|----------|-------|----------------|-------------|")
+    print("\n| Config | Recall Delta | MRR Delta | Faithfulness Delta | Relevancy Delta |")
+    print("|--------|---------|---------|----------------|-------------|")
 
     for config_name in ['B_NoRewrite', 'C_HybridOnly', 'D_VectorOnly']:
         r = ablation_results[config_name]
