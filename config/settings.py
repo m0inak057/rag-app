@@ -171,8 +171,9 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+CELERY_WORKER_POOL = 'solo'  # Windows compatibility: disable prefork multiprocessing
 
-# ─── Gemini LLM Configuration ───
+# ─── Gemini LLM Configuration (Only LLM Provider) ───
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = 'gemini-2.5-flash'  # Most cost-effective model
 

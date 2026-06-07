@@ -13,7 +13,6 @@ This module contains TWO pipelines:
 import fitz  # PyMuPDF — fast and accurate PDF text extraction
 from sentence_transformers import SentenceTransformer
 from pgvector.django import CosineDistance
-from groq import Groq
 from django.conf import settings
 from .models import Document, DocumentChunk, ChatConversation, ChatMessage
 
@@ -21,7 +20,6 @@ from .models import Document, DocumentChunk, ChatConversation, ChatMessage
 # Load models/clients ONCE when the server starts
 # ─────────────────────────────────────────────────────────
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 # ═══════════════════════════════════════════════════════════
