@@ -154,8 +154,8 @@ Return ONLY the 2 alternatives, one per line, no numbering or extra text."""
                         all_results[chunk_id][score_key] = (
                             all_results[chunk_id].get(score_key, 0) + result.get(score_key, 0)
                         ) / 2
-            except:
-                pass
+            except Exception as e:
+                state["reasoning_trace"].append(f"[RETRIEVE] Search error for query '{query_variant}': {str(e)}")
 
         # Re-rank combined results
         score_key = 'combined_score' if use_hybrid else 'relevance_score'

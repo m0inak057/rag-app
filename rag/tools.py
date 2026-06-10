@@ -64,7 +64,7 @@ def _vector_search_impl(query: str, document_id: int = None, collection_id: int 
 
 
 @tool
-def vector_search_tool(query: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> List[dict]:
+def vector_search_tool(query: str, document_id: Optional[int] = None, collection_id: Optional[int] = None, top_k: int = 5) -> List[dict]:
     """
     Search for relevant document chunks using semantic similarity (vector embeddings).
 
@@ -84,7 +84,7 @@ def vector_search_tool(query: str, document_id: int = None, collection_id: int =
 
 
 @tool
-def hybrid_search_tool(query: str, document_id: int = None, collection_id: int = None, top_k: int = 5) -> List[dict]:
+def hybrid_search_tool(query: str, document_id: Optional[int] = None, collection_id: Optional[int] = None, top_k: int = 5) -> List[dict]:
     """
     Perform hybrid search combining semantic (vector) and keyword (BM25) search.
 

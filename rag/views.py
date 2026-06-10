@@ -34,6 +34,7 @@ def get_embedding_model():
 def get_rag_graph():
     global _rag_graph
     if _rag_graph is None:
+        get_embedding_model()
         from .graph import create_rag_graph
         _rag_graph = create_rag_graph()
     return _rag_graph
